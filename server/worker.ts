@@ -82,6 +82,8 @@ async function getNextJob() {
 async function renderJob(job: any, serveUrl: string) {
     const inputProps = job.input_props;
 
+    console.log('check inputProps', inputProps.customStyleConfigs)
+
     const composition = await selectComposition({
         serveUrl,
         id: "VideoRenderer",

@@ -284,6 +284,9 @@ export const ThreeLines: React.FC<ThreeLinesProps> = ({
     const { fps, width } = useVideoConfig();
     const fontsLoaded = useFontsLoaded(config);
 
+
+    // console.log('this is CustomStyleConfigs', config.fonts.bold)
+
     if (!group?.lines?.length) {
         console.error('Invalid group data:', group);
         return null;

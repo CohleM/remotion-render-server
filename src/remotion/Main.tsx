@@ -14,7 +14,7 @@ type MainProps = {
     transcript: SubtitleGroup[];
     style?: string;
     captionPadding: number;
-    customStyleConfigs?: Record<string, SubtitleStyleConfig>; // Add this
+    customStyleConfigs: SubtitleStyleConfig; // Add this
     videoUrl: string
     videoInfo: VideoInfo
 };
@@ -27,6 +27,7 @@ export const Main: React.FC<MainProps> = ({
     videoUrl,
     videoInfo
 }) => {
+
     return <MyVideo
         groups={transcript}
         style={style}

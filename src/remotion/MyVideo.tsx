@@ -9,7 +9,7 @@ type MainProps = {
     groups: SubtitleGroup[];
     style?: string;
     captionPadding?: number;
-    customStyleConfigs?: Record<string, SubtitleStyleConfig>;
+    customStyleConfigs: SubtitleStyleConfig;
     videoUrl: string
 };
 

@@ -7,7 +7,7 @@ type StyleRendererProps = {
     group: SubtitleGroup;
     style?: string;
     captionPadding?: number;
-    customConfigs?: Record<string, SubtitleStyleConfig>; // Add this
+    customConfigs: SubtitleStyleConfig // Add this
 };
 
 export const StyleRenderer: React.FC<StyleRendererProps> = ({
@@ -16,8 +16,8 @@ export const StyleRenderer: React.FC<StyleRendererProps> = ({
     captionPadding,
     customConfigs
 }) => {
-    const config = getStyleConfig(style, customConfigs);
-
+    // const config = getStyleConfig(style, customConfigs);
+    const config = customConfigs
     switch (style) {
         case 'matt':
         case 'jess':
