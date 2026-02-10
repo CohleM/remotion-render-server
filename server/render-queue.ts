@@ -5,35 +5,47 @@ import {
 } from "@remotion/renderer";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { SubtitleGroup } from "../types/subtitles";
+import { SubtitleStyleConfig } from "../types/style";
 
 interface JobData {
-  titleText: string;
+  style: string;
+  captionPadding: number;
+  customStyleConfigs?: Record<string, SubtitleStyleConfig>;
+  transcript: SubtitleGroup[];
+  videoUrl: string;
+  videoInfo: {
+    width: number;
+    height: number;
+    durationInFrames: number;
+    fps: number;
+  };
 }
 
 type JobState =
   | {
-      status: "queued";
-      data: JobData;
-      cancel: () => void;
-    }
+    status: "queued";
+    data: JobData;
+    cancel: () => void;
+  }
   | {
-      status: "in-progress";
-      progress: number;
-      data: JobData;
-      cancel: () => void;
-    }
+    status: "in-progress";
+    progress: number;
+    data: JobData;
+    cancel: () => void;
+  }
   | {
-      status: "completed";
-      videoUrl: string;
-      data: JobData;
-    }
+    status: "completed";
+    videoUrl: string;
+    data: JobData;
+  }
   | {
-      status: "failed";
-      error: Error;
-      data: JobData;
-    };
+    status: "failed";
+    error: Error;
+    data: JobData;
+  };
 
-const compositionId = "HelloWorld";
+const compositionId = "VideoRenderer";
 
 export const makeRenderQueue = ({
   port,
@@ -64,7 +76,12 @@ export const makeRenderQueue = ({
 
     try {
       const inputProps = {
-        titleText: job.data.titleText,
+        style: job.data.style,
+        captionPadding: job.data.captionPadding,
+        customStyleConfigs: job.data.customStyleConfigs,
+        transcript: job.data.transcript,
+        videoUrl: job.data.videoUrl,
+        videoInfo: job.data.videoInfo,
       };
 
       const composition = await selectComposition({
