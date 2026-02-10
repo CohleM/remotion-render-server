@@ -221,7 +221,8 @@ async function uploadToStorage(localFile: string, jobId: string): Promise<string
     );
 
     const cdnBase = process.env.CDN_BASE_URL || `${process.env.R2_ENDPOINT}/${process.env.R2_BUCKET}`;
-    return `${cdnBase}/${key}`;
+    // return `${cdnBase}/${key}`;
+    return `${key}`;
 }
 
 /* ================= DB UPDATE ================= */
@@ -363,9 +364,22 @@ function setupShutdown() {
     });
 
     // Catch uncaught exceptions
+    // Catch uncaught exceptions
     process.on('uncaughtException', (err) => {
         console.error('Uncaught Exception:', err);
-        // Attempt graceful shutdown
+
+        const isRecoverableConnectionError =
+            err.message.includes('Connection terminated unexpectedly') ||
+            err.message.includes('terminating connection') ||
+            err.message.includes('ECONNRESET') ||
+            err.message.includes('EPIPE');
+
+        if (isRecoverableConnectionError) {
+            console.warn('⚠️ Recoverable connection error, continuing...');
+            return; // DO NOT shut down
+        }
+
+        // Only shut down on truly unexpected errors
         shutdown('uncaughtException').catch(() => process.exit(1));
     });
 }
