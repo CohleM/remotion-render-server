@@ -8,6 +8,21 @@ import path from "node:path";
 import { SubtitleGroup } from "../types/subtitles";
 import { SubtitleStyleConfig } from "../types/style";
 
+
+// import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
+// import { loadFont as loadBebas } from '@remotion/google-fonts/BebasNeue';
+// import { loadFont as loadPoppins } from '@remotion/google-fonts/Poppins';
+// import { loadFont as loadMontserrat } from '@remotion/google-fonts/Montserrat';
+// import { loadFont as loadOswald } from '@remotion/google-fonts/Oswald';
+
+// // Pre-load fonts with SPECIFIC weights you use to reduce network requests
+// const inter = loadInter();
+// const bebas = loadBebas();
+// const poppins = loadPoppins();
+// const montserrat = loadMontserrat();
+// const oswald = loadOswald();
+
+
 interface JobData {
   style: string;
   captionPadding: number;

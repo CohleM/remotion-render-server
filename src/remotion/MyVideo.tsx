@@ -4,7 +4,7 @@ import { SubtitleGroup } from '../../types/subtitles';
 import { StyleRenderer } from './StyleRenderer';
 import { SubtitleStyleConfig } from '../../types/style';
 import { memo, useMemo } from 'react';
-
+import { Video } from '@remotion/media';
 type MainProps = {
     groups: SubtitleGroup[];
     style?: string;
@@ -59,7 +59,7 @@ export const MyVideo: React.FC<MainProps> = memo(({
                     />
                 </Sequence>
             ))}
-            <Html5Video src={videoUrl} />
+            <Video src={videoUrl} />
         </AbsoluteFill>
     );
 });
