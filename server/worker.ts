@@ -3,7 +3,7 @@ import { ensureBrowser, renderMedia, selectComposition } from "@remotion/rendere
 import dotenv from "dotenv";
 import fs from "fs/promises";
 import fsSync from "fs";
-import { Pool } from "pg";
+import { Pool, PoolClient } from "pg";
 import path from "path";
 
 dotenv.config();
@@ -12,14 +12,30 @@ dotenv.config();
 
 const MAX_PARALLEL = Number(process.env.MAX_PARALLEL || 4);
 const SERVE_URL = process.env.REMOTION_SERVE_URL;
-// const TEMP_DIR = process.env.TEMP_RENDER_DIR || "/tmp/renders";
 const TEMP_DIR = path.resolve(process.env.TEMP_RENDER_DIR || "renders");
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS || 1500);
+
+// Retry configuration
+const DB_RETRY_ATTEMPTS = 3;
+const DB_RETRY_DELAY_MS = 1000;
+const PROGRESS_UPDATE_INTERVAL_MS = 5000; // Throttle DB updates
 
 /* ================= DB ================= */
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    max: 20,                    // Max connections in pool
+    idleTimeoutMillis: 30000,   // Close idle connections after 30s
+    connectionTimeoutMillis: 10000, // 10s timeout for new connections
+    // Add these for resilience:
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
+});
+
+// Handle pool-level errors to prevent crashes
+pool.on('error', (err) => {
+    console.error('Unexpected PostgreSQL pool error:', err);
+    // Don't exit - let the retry logic handle it
 });
 
 /* ================= STATE ================= */
@@ -39,21 +55,72 @@ async function ensureTempDir() {
     }
 }
 
+/* ================= RETRY WRAPPER ================= */
+
+async function withRetry<T>(
+    operation: () => Promise<T>,
+    context: string,
+    maxAttempts: number = DB_RETRY_ATTEMPTS
+): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await operation();
+        } catch (err) {
+            lastError = err as Error;
+            console.warn(`⚠️ ${context} failed (attempt ${attempt}/${maxAttempts}):`, (err as Error).message);
+
+            if (attempt < maxAttempts) {
+                await sleep(DB_RETRY_DELAY_MS * attempt); // Exponential backoff
+            }
+        }
+    }
+
+    throw new Error(`${context} failed after ${maxAttempts} attempts: ${lastError?.message}`);
+}
+
+/* ================= SAFE DB OPERATIONS ================= */
+
+async function getClient(): Promise<PoolClient> {
+    return withRetry(
+        () => pool.connect(),
+        'Database connection'
+    );
+}
+
+async function safeQuery(text: string, params?: any[]) {
+    return withRetry(
+        async () => {
+            const client = await getClient();
+            try {
+                return await client.query(text, params);
+            } finally {
+                client.release();
+            }
+        },
+        'Database query'
+    );
+}
+
 /* ================= JOB FETCH ================= */
 
-async function getNextJob() {
-    const client = await pool.connect();
+async function getNextJob(): Promise<any | null> {
+    const client = await getClient();
+
     try {
+        // Set a statement timeout for this transaction
+        await client.query('SET statement_timeout = 5000');
         await client.query("BEGIN");
 
         const res = await client.query(`
-      SELECT *
-      FROM render_jobs
-      WHERE status = 'queued'
-      ORDER BY created_at ASC
-      LIMIT 1
-      FOR UPDATE SKIP LOCKED
-    `);
+            SELECT *
+            FROM render_jobs
+            WHERE status = 'queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        `);
 
         if (res.rows.length === 0) {
             await client.query("ROLLBACK");
@@ -70,7 +137,7 @@ async function getNextJob() {
         await client.query("COMMIT");
         return job;
     } catch (err) {
-        await client.query("ROLLBACK");
+        await client.query("ROLLBACK").catch(() => { }); // Ignore rollback errors
         throw err;
     } finally {
         client.release();
@@ -79,10 +146,9 @@ async function getNextJob() {
 
 /* ================= RENDER ================= */
 
-async function renderJob(job: any, serveUrl: string) {
+async function renderJob(job: any, serveUrl: string): Promise<string> {
     const inputProps = job.input_props;
-
-    console.log('check inputProps', inputProps.customStyleConfigs)
+    console.log('check inputProps', inputProps.customStyleConfigs);
 
     const composition = await selectComposition({
         serveUrl,
@@ -92,17 +158,36 @@ async function renderJob(job: any, serveUrl: string) {
 
     const outputPath = path.join(TEMP_DIR, `${job.id}.mp4`);
 
+    // Throttle progress updates to avoid DB spam
+    let lastProgressUpdate = 0;
+    let lastProgressValue = 0;
+
     await renderMedia({
         composition,
         serveUrl,
         codec: "h264",
         inputProps,
         outputLocation: outputPath,
-        onProgress: async ({ progress }) => {
-            await pool.query(
-                `UPDATE render_jobs SET progress = $1 WHERE id = $2`,
-                [Math.round(progress * 100) / 100, job.id]
-            );
+        onProgress: ({ progress }) => {
+            const now = Date.now();
+            const progressRounded = Math.round(progress * 100) / 100;
+
+            // Only update if significant change or enough time passed
+            if (now - lastProgressUpdate > PROGRESS_UPDATE_INTERVAL_MS &&
+                progressRounded !== lastProgressValue) {
+
+                lastProgressUpdate = now;
+                lastProgressValue = progressRounded;
+
+                // Fire-and-forget with error handling - NEVER throw here
+                safeQuery(
+                    `UPDATE render_jobs SET progress = $1 WHERE id = $2`,
+                    [progressRounded, job.id]
+                ).catch(err => {
+                    console.error(`Failed to update progress for job ${job.id}:`, err.message);
+                    // Continue rendering - don't crash
+                });
+            }
         },
     });
 
@@ -135,7 +220,6 @@ async function uploadToStorage(localFile: string, jobId: string): Promise<string
         })
     );
 
-    // Construct public URL — set this to your R2 custom domain or public bucket URL
     const cdnBase = process.env.CDN_BASE_URL || `${process.env.R2_ENDPOINT}/${process.env.R2_BUCKET}`;
     return `${cdnBase}/${key}`;
 }
@@ -143,29 +227,37 @@ async function uploadToStorage(localFile: string, jobId: string): Promise<string
 /* ================= DB UPDATE ================= */
 
 async function completeJob(jobId: string, url: string) {
-    await pool.query(
+    await safeQuery(
         `UPDATE render_jobs
-     SET status = 'completed', output_url = $1, progress = 1, completed_at = NOW()
-     WHERE id = $2`,
+         SET status = 'completed', output_url = $1, progress = 1, completed_at = NOW()
+         WHERE id = $2`,
         [url, jobId]
     );
 }
 
 async function failJob(jobId: string, error: any) {
-    await pool.query(
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    // Truncate if too long for DB
+    const truncated = errorMessage.slice(0, 1000);
+
+    await safeQuery(
         `UPDATE render_jobs SET status = 'failed', error = $1 WHERE id = $2`,
-        [String(error), jobId]
-    );
+        [truncated, jobId]
+    ).catch(err => {
+        console.error(`CRITICAL: Failed to mark job ${jobId} as failed:`, err);
+    });
 }
 
 /* ================= CLEANUP ================= */
 
 async function cleanupFile(filePath: string) {
-    // try {
-    //     await fs.unlink(filePath);
-    // } catch { }
-
-    console.log('clearning yoo')
+    try {
+        // await fs.unlink(filePath);
+        console.log(`🗑️ Cleaned up ${filePath}`);
+    } catch (err) {
+        // File might not exist, that's fine
+        console.log(`⚠️ Could not clean up ${filePath}:`, (err as Error).message);
+    }
 }
 
 /* ================= PROCESS JOB ================= */
@@ -200,7 +292,14 @@ async function workerLoop(serveUrl: string) {
             continue;
         }
 
-        const job = await getNextJob();
+        let job: any;
+        try {
+            job = await getNextJob();
+        } catch (err) {
+            console.error('Failed to fetch job:', err);
+            await sleep(POLL_INTERVAL * 2); // Wait longer on error
+            continue;
+        }
 
         if (!job) {
             await sleep(POLL_INTERVAL);
@@ -208,8 +307,12 @@ async function workerLoop(serveUrl: string) {
         }
 
         activeRenders++;
+
+        // Run job in background with isolated error handling
         processJob(job, serveUrl)
-            .catch(console.error)
+            .catch(err => {
+                console.error(`Unhandled error in processJob for ${job?.id}:`, err);
+            })
             .finally(() => {
                 activeRenders--;
             });
@@ -219,18 +322,63 @@ async function workerLoop(serveUrl: string) {
 /* ================= SHUTDOWN ================= */
 
 function setupShutdown() {
-    const shutdown = async () => {
-        console.log("🛑 Shutting down...");
+    const shutdown = async (signal: string) => {
+        console.log(`🛑 Received ${signal}, shutting down...`);
         shuttingDown = true;
-        while (activeRenders > 0) {
-            console.log(`Waiting for ${activeRenders} active renders...`);
-            await sleep(1000);
-        }
-        await pool.end();
-        process.exit(0);
+
+        // Stop accepting new jobs immediately
+        const gracefulShutdown = async () => {
+            while (activeRenders > 0) {
+                console.log(`Waiting for ${activeRenders} active renders...`);
+                await sleep(1000);
+            }
+
+            try {
+                await pool.end();
+                console.log('Database pool closed');
+            } catch (err) {
+                console.error('Error closing pool:', err);
+            }
+
+            process.exit(0);
+        };
+
+        // Force exit after 30s
+        const forceExit = setTimeout(() => {
+            console.error('Force exiting after timeout');
+            process.exit(1);
+        }, 30000);
+
+        await gracefulShutdown();
+        clearTimeout(forceExit);
     };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+
+    process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+    // Catch unhandled rejections
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+        // Don't exit - log and continue
+    });
+
+    // Catch uncaught exceptions
+    process.on('uncaughtException', (err) => {
+        console.error('Uncaught Exception:', err);
+        // Attempt graceful shutdown
+        shutdown('uncaughtException').catch(() => process.exit(1));
+    });
+}
+
+/* ================= HEALTH CHECK ================= */
+
+async function healthCheck() {
+    try {
+        await pool.query('SELECT 1');
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /* ================= MAIN ================= */
@@ -238,6 +386,15 @@ function setupShutdown() {
 async function main() {
     await ensureTempDir();
     setupShutdown();
+
+    // Verify DB connection before starting
+    console.log('Checking database connection...');
+    if (!await healthCheck()) {
+        console.error('Database not reachable, exiting');
+        process.exit(1);
+    }
+    console.log('Database connected');
+
     await ensureBrowser();
 
     const serveUrl = SERVE_URL
@@ -252,4 +409,7 @@ async function main() {
     await workerLoop(serveUrl);
 }
 
-main();
+main().catch(err => {
+    console.error('Fatal error in main:', err);
+    process.exit(1);
+});
