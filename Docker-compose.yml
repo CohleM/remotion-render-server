@@ -1,0 +1,8 @@
+version: "3.8"
+
+services:
+  frontend:
+    container_name: remotion-worker
+    build: .
+    ports:
+      - "3001:3000"
