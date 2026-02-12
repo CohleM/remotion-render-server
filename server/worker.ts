@@ -9,7 +9,6 @@ import path from "path";
 dotenv.config();
 
 /* ================= CONFIG ================= */
-
 const MAX_PARALLEL = Number(process.env.MAX_PARALLEL || 4);
 const SERVE_URL = process.env.REMOTION_SERVE_URL;
 const TEMP_DIR = path.resolve(process.env.TEMP_RENDER_DIR || "renders");
@@ -21,11 +20,10 @@ const DB_RETRY_DELAY_MS = 1000;
 const PROGRESS_UPDATE_INTERVAL_MS = 5000; // Throttle DB updates
 
 /* ================= DB ================= */
-
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 20,                    // Max connections in pool
-    idleTimeoutMillis: 30000,   // Close idle connections after 30s
+    max: 20, // Max connections in pool
+    idleTimeoutMillis: 30000, // Close idle connections after 30s
     connectionTimeoutMillis: 10000, // 10s timeout for new connections
     // Add these for resilience:
     keepAlive: true,
@@ -39,12 +37,10 @@ pool.on('error', (err) => {
 });
 
 /* ================= STATE ================= */
-
 let activeRenders = 0;
 let shuttingDown = false;
 
 /* ================= UTILS ================= */
-
 function sleep(ms: number) {
     return new Promise((res) => setTimeout(res, ms));
 }
@@ -56,32 +52,27 @@ async function ensureTempDir() {
 }
 
 /* ================= RETRY WRAPPER ================= */
-
 async function withRetry<T>(
     operation: () => Promise<T>,
     context: string,
     maxAttempts: number = DB_RETRY_ATTEMPTS
 ): Promise<T> {
     let lastError: Error | undefined;
-
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             return await operation();
         } catch (err) {
             lastError = err as Error;
             console.warn(`⚠️ ${context} failed (attempt ${attempt}/${maxAttempts}):`, (err as Error).message);
-
             if (attempt < maxAttempts) {
                 await sleep(DB_RETRY_DELAY_MS * attempt); // Exponential backoff
             }
         }
     }
-
     throw new Error(`${context} failed after ${maxAttempts} attempts: ${lastError?.message}`);
 }
 
 /* ================= SAFE DB OPERATIONS ================= */
-
 async function getClient(): Promise<PoolClient> {
     return withRetry(
         () => pool.connect(),
@@ -104,23 +95,20 @@ async function safeQuery(text: string, params?: any[]) {
 }
 
 /* ================= JOB FETCH ================= */
-
-async function getNextJob(): Promise<any | null> {
+async function getNextJob(): Promise<any> {
     const client = await getClient();
-
     try {
         // Set a statement timeout for this transaction
         await client.query('SET statement_timeout = 5000');
         await client.query("BEGIN");
 
         const res = await client.query(`
-            SELECT *
-            FROM render_jobs
-            WHERE status = 'queued'
-            ORDER BY created_at ASC
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-        `);
+      SELECT * FROM render_jobs
+      WHERE status = 'queued'
+      ORDER BY created_at ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `);
 
         if (res.rows.length === 0) {
             await client.query("ROLLBACK");
@@ -128,7 +116,6 @@ async function getNextJob(): Promise<any | null> {
         }
 
         const job = res.rows[0];
-
         await client.query(
             `UPDATE render_jobs SET status = 'rendering', started_at = NOW() WHERE id = $1`,
             [job.id]
@@ -145,7 +132,6 @@ async function getNextJob(): Promise<any | null> {
 }
 
 /* ================= RENDER ================= */
-
 async function renderJob(job: any, serveUrl: string): Promise<string> {
     const inputProps = job.input_props;
     console.log('check inputProps', inputProps.customStyleConfigs);
@@ -173,9 +159,7 @@ async function renderJob(job: any, serveUrl: string): Promise<string> {
             const progressRounded = Math.round(progress * 100) / 100;
 
             // Only update if significant change or enough time passed
-            if (now - lastProgressUpdate > PROGRESS_UPDATE_INTERVAL_MS &&
-                progressRounded !== lastProgressValue) {
-
+            if (now - lastProgressUpdate > PROGRESS_UPDATE_INTERVAL_MS && progressRounded !== lastProgressValue) {
                 lastProgressUpdate = now;
                 lastProgressValue = progressRounded;
 
@@ -195,7 +179,6 @@ async function renderJob(job: any, serveUrl: string): Promise<string> {
 }
 
 /* ================= STORAGE ================= */
-
 async function uploadToStorage(localFile: string, jobId: string): Promise<string> {
     const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
 
@@ -225,15 +208,82 @@ async function uploadToStorage(localFile: string, jobId: string): Promise<string
     return `${key}`;
 }
 
-/* ================= DB UPDATE ================= */
+/* ================= CREDIT DEDUCTION ================= */
+async function deductUserCredit(userId: number): Promise<void> {
+    const client = await getClient();
+    try {
+        await client.query("BEGIN");
 
-async function completeJob(jobId: string, url: string) {
-    await safeQuery(
-        `UPDATE render_jobs
-         SET status = 'completed', output_url = $1, progress = 1, completed_at = NOW()
-         WHERE id = $2`,
-        [url, jobId]
-    );
+        // Check current credits
+        const userResult = await client.query(
+            `SELECT credits FROM users WHERE id = $1 FOR UPDATE`,
+            [userId]
+        );
+
+        if (userResult.rows.length === 0) {
+            throw new Error(`User ${userId} not found`);
+        }
+
+        const currentCredits = userResult.rows[0].credits;
+
+        if (currentCredits < 1) {
+            console.warn(`⚠️ User ${userId} has insufficient credits (${currentCredits}), but video was already rendered`);
+            // Still complete the job, but log the issue
+        }
+
+        // Deduct 1 credit (prevent going below 0)
+        await client.query(
+            `UPDATE users 
+       SET credits = GREATEST(credits - 1, 0),
+           updated_at = NOW()
+       WHERE id = $1`,
+            [userId]
+        );
+
+        await client.query("COMMIT");
+        console.log(`💳 Deducted 1 credit from user ${userId} (had ${currentCredits})`);
+    } catch (err) {
+        await client.query("ROLLBACK").catch(() => { });
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/* ================= DB UPDATE ================= */
+async function completeJob(jobId: string, url: string, userId: number) {
+    const client = await getClient();
+    try {
+        await client.query("BEGIN");
+
+        // Update job status
+        await client.query(
+            `UPDATE render_jobs 
+       SET status = 'completed', 
+           output_url = $1, 
+           progress = 1, 
+           completed_at = NOW() 
+       WHERE id = $2`,
+            [url, jobId]
+        );
+
+        // Deduct credit from user
+        await client.query(
+            `UPDATE users 
+       SET credits = GREATEST(credits - 1, 0),
+           updated_at = NOW()
+       WHERE id = $1`,
+            [userId]
+        );
+
+        await client.query("COMMIT");
+        console.log(`✅ Job ${jobId} completed and 1 credit deducted from user ${userId}`);
+    } catch (err) {
+        await client.query("ROLLBACK").catch(() => { });
+        throw err;
+    } finally {
+        client.release();
+    }
 }
 
 async function failJob(jobId: string, error: any) {
@@ -250,10 +300,9 @@ async function failJob(jobId: string, error: any) {
 }
 
 /* ================= CLEANUP ================= */
-
 async function cleanupFile(filePath: string) {
     try {
-        // await fs.unlink(filePath);
+        await fs.unlink(filePath);
         console.log(`🗑️ Cleaned up ${filePath}`);
     } catch (err) {
         // File might not exist, that's fine
@@ -262,27 +311,32 @@ async function cleanupFile(filePath: string) {
 }
 
 /* ================= PROCESS JOB ================= */
-
 async function processJob(job: any, serveUrl: string) {
     console.log(`🎬 Starting render ${job.id}`);
     let outputFile = "";
 
     try {
+        // Render the video
         outputFile = await renderJob(job, serveUrl);
         console.log(`📦 Uploading ${job.id}`);
+
+        // Upload to R2
         const url = await uploadToStorage(outputFile, job.id);
-        await completeJob(job.id, url);
+
+        // Complete job AND deduct credit in a single transaction
+        await completeJob(job.id, url, job.user_id);
+
         console.log(`✅ Completed ${job.id}`);
     } catch (err) {
         console.error(`❌ Failed ${job.id}`, err);
         await failJob(job.id, err);
+        // Note: We don't deduct credits on failure
     } finally {
         if (outputFile) await cleanupFile(outputFile);
     }
 }
 
 /* ================= WORKER LOOP ================= */
-
 async function workerLoop(serveUrl: string) {
     console.log(`🚀 Worker started — max parallel: ${MAX_PARALLEL}`);
     console.log(`🎥 Using serve URL: ${serveUrl}`);
@@ -321,13 +375,11 @@ async function workerLoop(serveUrl: string) {
 }
 
 /* ================= SHUTDOWN ================= */
-
 function setupShutdown() {
     const shutdown = async (signal: string) => {
         console.log(`🛑 Received ${signal}, shutting down...`);
-        shuttingDown = true;
+        shuttingDown = true; // Stop accepting new jobs immediately
 
-        // Stop accepting new jobs immediately
         const gracefulShutdown = async () => {
             while (activeRenders > 0) {
                 console.log(`Waiting for ${activeRenders} active renders...`);
@@ -364,7 +416,6 @@ function setupShutdown() {
     });
 
     // Catch uncaught exceptions
-    // Catch uncaught exceptions
     process.on('uncaughtException', (err) => {
         console.error('Uncaught Exception:', err);
 
@@ -385,7 +436,6 @@ function setupShutdown() {
 }
 
 /* ================= HEALTH CHECK ================= */
-
 async function healthCheck() {
     try {
         await pool.query('SELECT 1');
@@ -396,7 +446,6 @@ async function healthCheck() {
 }
 
 /* ================= MAIN ================= */
-
 async function main() {
     await ensureTempDir();
     setupShutdown();
