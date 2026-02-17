@@ -313,6 +313,120 @@ export const defaultStyleConfigs: Record<string, SubtitleStyleConfig> = {
         category: 'All',
         fonts: {
             bold: {
+                fontSize: 60,
+                fontWeight: 800,
+                fontFamily: 'Inter',
+                color: '#f6ff4d',
+                uppercase: false,
+                animationType: 'slide-up'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 800,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            italic: {
+                fontSize: 60,
+                fontWeight: 300,
+                fontFamily: 'Inter',
+                fontStyle: 'italic',
+                color: '#ffffff',
+                animationType: 'slide-up'
+            }
+        }
+    },
+    GBI: {
+        id: 'GBI',
+        name: 'Gradient Base Italic',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 60,
+                fontWeight: 800,
+                fontFamily: 'Inter',
+                color: '#f6ff4d',
+                uppercase: true,
+                animationType: 'slide-up'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 800,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            italic: {
+                fontSize: 100,
+                fontWeight: 700,
+                fontFamily: 'Inter',
+                fontStyle: 'italic',
+                color: '#f6ff4d',
+                animationType: 'slide-up'
+            }
+        }
+    },
+    FaB: {
+        id: 'FaB',
+        name: 'Fade And Blur',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 80,
+                fontWeight: 800,
+                fontFamily: 'Inter',
+                color: '#f6ff4d',
+                uppercase: true,
+                animationType: 'fade-blur'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 400,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'fade-blur'
+
+            },
+            italic: {
+                fontSize: 60,
+                fontWeight: 200,
+                fontFamily: 'Inter',
+                fontStyle: 'italic',
+                color: '#ffffff',
+                animationType: 'fade-blur'
+            }
+        }
+    },
+    FaB1: {
+        id: 'FaB1',
+        name: 'Fade And Blur1',
+        category: 'All',
+        fonts: {
+            bold: {
                 fontSize: 80,
                 fontWeight: 800,
                 fontFamily: 'Inter',
@@ -327,9 +441,11 @@ export const defaultStyleConfigs: Record<string, SubtitleStyleConfig> = {
             },
             normal: {
                 fontSize: 60,
-                fontWeight: 800,
+                fontWeight: 600,
                 fontFamily: 'Inter',
-                color: '#ffffff'
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
             },
             italic: {
                 fontSize: 60,
@@ -337,6 +453,270 @@ export const defaultStyleConfigs: Record<string, SubtitleStyleConfig> = {
                 fontFamily: 'Inter',
                 fontStyle: 'italic',
                 color: '#ffffff'
+            }
+        }
+    },
+    Combo: {
+        id: 'Combo',
+        name: 'Combo',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 100,
+                fontWeight: 900,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 400,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+            },
+            italic: {
+                fontSize: 60,
+                fontWeight: 300,
+                fontFamily: 'Inter',
+                fontStyle: 'italic',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+            }
+        }
+    },
+    NaI: {
+        id: 'NaI',
+        name: 'Normal and Italic',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 100,
+                fontWeight: 800,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 400,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+
+            },
+            italic: {
+                fontSize: 100,
+                fontWeight: 700,
+                fontFamily: 'Cormorant Garamond',
+                fontStyle: 'italic',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'fade-blur'
+            }
+        }
+    },
+    NaB: {
+        id: 'NaB',
+        name: 'Normal and Bold',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 80,
+                fontWeight: 900,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'fade-blur'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 400,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+
+            },
+            italic: {
+                fontSize: 100,
+                fontWeight: 700,
+                fontFamily: 'Cormorant Garamond',
+                fontStyle: 'italic',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'fade-blur'
+            }
+        }
+    },
+    Glow: {
+        id: 'Glow',
+        name: 'Glow',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 80,
+                fontWeight: 800,
+                fontFamily: 'Inter',
+                color: '#f9fc19',
+                uppercase: false,
+                shadow: "large",
+                shadowColor: '#f9fc19',
+                animationType: 'slide-up'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 400,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            italic: {
+                fontSize: 60,
+                fontWeight: 200,
+                fontFamily: 'Inter',
+                fontStyle: 'italic',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            }
+        }
+    },
+    GlowI: {
+        id: 'GlowI',
+        name: 'Glow Italic',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 80,
+                fontWeight: 800,
+                fontFamily: 'Inter',
+                color: '#f9fc19',
+                uppercase: false,
+                shadow: "large",
+                shadowColor: '#f9fc19',
+                animationType: 'slide-up'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 400,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            italic: {
+                fontSize: 100,
+                fontWeight: 700,
+                fontFamily: 'Cormorant Garamond',
+                fontStyle: 'italic',
+                color: '#f9fc19',
+                shadow: "large",
+                shadowColor: '#f9fc19',
+                animationType: 'slide-up'
+            }
+        }
+    },
+    EW: {
+        id: 'EW',
+        name: 'Equal Width',
+        category: 'All',
+        fonts: {
+            bold: {
+                fontSize: 100,
+                fontWeight: 900,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            thin: {
+                fontSize: 50,
+                fontWeight: 100,
+                fontFamily: 'Inter',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            normal: {
+                fontSize: 60,
+                fontWeight: 400,
+                fontFamily: 'Poppins',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
+            },
+            italic: {
+                fontSize: 60,
+                fontWeight: 300,
+                fontFamily: 'Inter',
+                fontStyle: 'italic',
+                color: '#ffffff',
+                shadow: "large",
+                shadowColor: '#ffffff',
+                animationType: 'slide-up'
             }
         }
     },
@@ -366,24 +746,15 @@ export const getStyleConfig = (
 
 
 export const styles: SubtitleStyle[] = [
-    { id: 'matt', name: 'Matt', category: 'New', isNew: true },
-    { id: 'ThreeLines', name: 'ThreeLines', category: 'Trend', isNew: true },
-    { id: 'jack', name: 'Jack', category: 'New', isNew: true },
-    { id: 'nick', name: 'Nick', category: 'New', isNew: true },
-    { id: 'laura', name: 'Laura', category: 'Trend' },
-    { id: 'kelly2', name: 'Kelly 2', category: 'Premium', isPremium: true },
-    { id: 'caleb', name: 'Caleb', category: 'All' },
-    { id: 'kendrick', name: 'Kendrick', category: 'Trend' },
-    { id: 'lewis', name: 'Lewis', category: 'Premium', isPremium: true },
     { id: 'GB', name: 'Gradient Base', category: 'All' },
-    { id: 'carlos', name: 'Carlos', category: 'All' },
-    { id: 'luke', name: 'Luke', category: 'Speakers' },
-    { id: 'mark', name: 'Mark', category: 'Premium', isPremium: true },
-    { id: 'sara', name: 'Sara', category: 'Premium', isPremium: true },
-    { id: 'daniel', name: 'Daniel', category: 'Premium', isPremium: true },
-    { id: 'dan2', name: 'Dan 2', category: 'All' },
-    { id: 'hormozi4', name: 'Hormozi 4', category: 'Trend', isPremium: true },
-    { id: 'basic', name: 'Basic ThreeLines', category: 'All' },
+    { id: 'GBI', name: 'Gradient Base Italic', category: 'All' },
+    { id: 'EW', name: 'Equal Width', category: 'All', isPremium: true },
+    { id: 'Glow', name: 'Glow', category: 'All' },
+    { id: 'GlowI', name: 'Glow Italic', category: 'All' },
+    { id: 'FaB', name: 'Fade And Blur', category: 'All', },
+    { id: 'Combo', name: 'Combo', category: 'Premium' },
+    { id: 'NaI', name: 'Normal and Italic', category: 'All', },
+    { id: 'NaB', name: 'Normal and Bold', category: 'All', },
 ];
 
-export const categories = ['All', 'Trend', 'New', 'Premium', 'Emoji', 'Speakers'] as const;
+export const categories = ['All', 'Premium'] as const;

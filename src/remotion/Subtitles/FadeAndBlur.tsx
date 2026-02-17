@@ -28,11 +28,15 @@ loadPoppins();
 loadMontserrat();
 loadOswald();
 
+// ============================================
+// CONFIGURABLE ANIMATION VARIABLES
+// ============================================
 const LINE_SPACING = 0;
-const ANIMATION_ANTICIPATION_FRAMES = 4;
-const FADE_OUT_DURATION_FRAMES = 30;
+const FADE_OUT_DURATION_FRAMES = 15;
 const MAX_WORD_DISPLAY_SECONDS = 3;
-const MAX_FONT_SIZE = 100; // ✨ Maximum allowed font size in pixels
+const LINE_OVERLAP_FRAMES = 15;
+const ANIMATION_ANTICIPATION_FRAMES = 4;
+// ============================================
 
 // Get font styles from config safely
 const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleDefinition => {
@@ -46,7 +50,7 @@ const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleD
     return config.fonts[fontType as keyof typeof config.fonts] || defaultStyle;
 };
 
-// Get animation type for a specific font type from config
+// ✨ NEW: Get animation type for a specific font type from config
 const getAnimationType = (config: SubtitleStyleConfig, fontType: string): AnimationType => {
     const style = config.fonts[fontType as keyof typeof config.fonts];
     return style?.animationType || 'fade-blur';
@@ -84,80 +88,16 @@ const useFontsLoaded = (config: SubtitleStyleConfig) => {
     return loaded;
 };
 
-// Measure text width with a given font style
-const measureTextWidth = (
-    text: string,
-    style: FontStyleDefinition
-): number => {
-    const tempSpan = document.createElement('span');
-    tempSpan.style.position = 'absolute';
-    tempSpan.style.visibility = 'hidden';
-    tempSpan.style.fontSize = `${style.fontSize}px`;
-    tempSpan.style.fontFamily = `"${style.fontFamily}", sans-serif`;
-    tempSpan.style.fontWeight = String(style.fontWeight);
-    tempSpan.style.fontStyle = style.fontStyle || 'normal';
-    tempSpan.style.whiteSpace = 'nowrap';
-    tempSpan.style.textTransform = style.uppercase ? 'uppercase' : 'none';
-    tempSpan.textContent = text;
-
-    document.body.appendChild(tempSpan);
-    const width = tempSpan.offsetWidth;
-    document.body.removeChild(tempSpan);
-
-    return width;
-};
-
-// ✨ UPDATED: Calculate font size scale factors with max font size capping
-const calculateFontScales = (
-    lines: Line[],
-    config: SubtitleStyleConfig
-): number[] => {
-    if (lines.length === 0) return [];
-
-    // Measure width of each line with its original font style
-    const lineWidths = lines.map((line) => {
-        const style = getFontStyle(config, line.font_type);
-        const text = line.words.map(w => w.word).join(' ');
-        return {
-            width: measureTextWidth(text, style),
-            fontSize: style.fontSize
-        };
-    });
-
-    // Find the maximum width
-    const maxWidth = Math.max(...lineWidths.map(lw => lw.width));
-
-    // Calculate scale factor for each line with max font size cap
-    const scales = lineWidths.map((lw) => {
-        if (lw.width === 0) return 1;
-
-        // Calculate what the scaled font size would be
-        const rawScale = maxWidth / lw.width;
-        const scaledFontSize = lw.fontSize * rawScale;
-
-        // ✨ If scaled font size exceeds MAX_FONT_SIZE, cap it
-        if (scaledFontSize > MAX_FONT_SIZE) {
-            return MAX_FONT_SIZE / lw.fontSize;
-        }
-
-        // Otherwise use the original scale to match widths
-        return rawScale;
-    });
-
-    return scales;
-};
-
-// Measure actual rendered height of text content (updated to use scaled font size)
+// Measure actual rendered height of text content
 const measureActualTextHeight = (
     text: string,
     style: FontStyleDefinition,
-    containerWidth: number,
-    scale: number = 1
+    containerWidth: number
 ): number => {
     const tempDiv = document.createElement('div');
     tempDiv.style.position = 'absolute';
     tempDiv.style.visibility = 'hidden';
-    tempDiv.style.fontSize = `${style.fontSize * scale}px`;
+    tempDiv.style.fontSize = `${style.fontSize}px`;
     tempDiv.style.fontFamily = `"${style.fontFamily}", sans-serif`;
     tempDiv.style.fontWeight = String(style.fontWeight);
     tempDiv.style.fontStyle = style.fontStyle || 'normal';
@@ -188,16 +128,14 @@ const measureActualTextHeight = (
 const calculateLinePositions = (
     lines: Line[],
     config: SubtitleStyleConfig,
-    containerWidth: number,
-    fontScales: number[]
+    containerWidth: number
 ): number[] => {
     if (lines.length === 0) return [];
 
-    const lineHeights = lines.map((line, index) => {
+    const lineHeights = lines.map((line) => {
         const style = getFontStyle(config, line.font_type);
         const text = line.words.map(w => w.word).join(' ');
-        const scale = fontScales[index] || 1;
-        return measureActualTextHeight(text, style, containerWidth, scale);
+        return measureActualTextHeight(text, style, containerWidth);
     });
 
     const offsets: number[] = [0];
@@ -212,7 +150,7 @@ const calculateLinePositions = (
 
 // Build text shadow based on shadow settings
 const buildTextShadow = (style: FontStyleDefinition): string => {
-    const shadows: string[] = ['3px 3px 6px rgba(0,0,0,0.9)'];
+    const shadows: string[] = ['2px 2px 4px rgba(0,0,0,0.3)'];
 
     if (style.shadow && style.shadow !== 'none') {
         const blur = style.shadow === 'small' ? 10 : style.shadow === 'medium' ? 20 : 30;
@@ -311,6 +249,7 @@ const WordText = memo(function WordText({
     lineStart,
     wordStart,
     wordEnd,
+    lineEnd,
     animationType,
 }: {
     word: string;
@@ -318,6 +257,7 @@ const WordText = memo(function WordText({
     lineStart: number;
     wordStart: number;
     wordEnd: number;
+    lineEnd: number;
     animationType: AnimationType;
 }) {
     const frame = useCurrentFrame();
@@ -334,7 +274,7 @@ const WordText = memo(function WordText({
     const wordEndFrame = Math.round(relativeWordEnd * fps);
     const fadeOutEndFrame = Math.min(fadeOutStartFrame + FADE_OUT_DURATION_FRAMES, wordEndFrame);
 
-    // ✨ Use the new animation hook
+    // ✨ Use the new animation hook for entry animation
     const entryAnimation = useWordAnimation(animationType, frame, fps, wordStartFrame);
 
     const { opacity, transform, filter } = useMemo(() => {
@@ -372,14 +312,51 @@ const WordText = memo(function WordText({
     );
 });
 
-// ✨ UPDATED: LineText now accepts fontScale and animationType props
+// Calculate fade out animation values based on next line's start
+const useLineFadeOut = (
+    frame: number,
+    fps: number,
+    lineStart: number,
+    nextLineStart: number | null,
+    groupStart: number
+) => {
+    return useMemo(() => {
+        if (nextLineStart === null) {
+            return { opacity: 1, blur: 0 };
+        }
+
+        // const relativeLineStart = (lineStart - groupStart) * fps;
+        const relativeNextLineStart = (nextLineStart - groupStart) * fps;
+
+        const fadeOutStart = relativeNextLineStart + LINE_OVERLAP_FRAMES;
+        const fadeOutEnd = fadeOutStart + FADE_OUT_DURATION_FRAMES;
+
+        if (frame < fadeOutStart) {
+            return { opacity: 1, blur: 0 };
+        }
+
+        if (frame >= fadeOutEnd) {
+            return { opacity: 0, blur: 10 };
+        }
+
+        const progress = (frame - fadeOutStart) / FADE_OUT_DURATION_FRAMES;
+
+        return {
+            opacity: interpolate(progress, [0, 1], [1, 0]),
+            blur: interpolate(progress, [0, 1], [0, 10])
+        };
+    }, [frame, fps, lineStart, nextLineStart, groupStart]);
+};
+
+// ✨ UPDATED: LineText now accepts animationType prop
 const LineText = memo(function LineText({
     line,
     lineIndex,
     translateYOffset,
     style,
     captionPadding,
-    fontScale,
+    nextLineStart,
+    groupStart,
     animationType,
 }: {
     line: Line;
@@ -387,9 +364,21 @@ const LineText = memo(function LineText({
     translateYOffset: number;
     style: FontStyleDefinition;
     captionPadding: number;
-    fontScale: number;
+    nextLineStart: number | null;
+    groupStart: number;
     animationType: AnimationType;
 }) {
+    const frame = useCurrentFrame();
+    const { fps } = useVideoConfig();
+
+    const { opacity: fadeOutOpacity, blur: fadeOutBlur } = useLineFadeOut(
+        frame,
+        fps,
+        line.start,
+        nextLineStart,
+        groupStart
+    );
+
     const textShadow = useMemo(() => buildTextShadow(style), [style]);
 
     const textStroke = useMemo(() => {
@@ -402,11 +391,14 @@ const LineText = memo(function LineText({
         justifyContent: 'flex-start' as const,
         alignItems: 'center' as const,
         paddingTop: captionPadding,
-    }), [captionPadding]);
+        opacity: fadeOutOpacity,
+        filter: `blur(${fadeOutBlur}px)`,
+        transition: 'none',
+    }), [captionPadding, fadeOutOpacity, fadeOutBlur]);
 
     const textStyle = useMemo(() => ({
         transform: `translateY(${translateYOffset}px)`,
-        fontSize: style.fontSize * fontScale,
+        fontSize: style.fontSize,
         fontFamily: `"${style.fontFamily}", sans-serif`,
         fontWeight: style.fontWeight,
         fontStyle: style.fontStyle || 'normal',
@@ -420,7 +412,9 @@ const LineText = memo(function LineText({
         alignItems: 'baseline',
         textTransform: style.uppercase ? 'uppercase' : 'none' as const,
         WebkitTextStroke: textStroke,
-    }), [translateYOffset, style, textShadow, textStroke, fontScale]);
+    }), [translateYOffset, style, textShadow, textStroke]);
+
+    const lineEndTime = nextLineStart !== null ? nextLineStart : (groupStart + (line.words[line.words.length - 1]?.end || line.end));
 
     return (
         <AbsoluteFill style={containerStyle}>
@@ -433,6 +427,7 @@ const LineText = memo(function LineText({
                         lineStart={line.start}
                         wordStart={word.start}
                         wordEnd={word.end}
+                        lineEnd={lineEndTime}
                         animationType={animationType} // ✨ Pass animation type
                     />
                 ))}
@@ -447,7 +442,7 @@ type ThreeLinesProps = {
     captionPadding?: number;
 };
 
-export const EqualWidth: React.FC<ThreeLinesProps> = ({
+export const FadeAndBlur: React.FC<ThreeLinesProps> = ({
     group,
     config,
     captionPadding = 540
@@ -462,18 +457,12 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
 
     const containerWidth = width * 0.9;
 
-    // Calculate font scales with max font size capping
-    const fontScales = useMemo(() => {
-        if (!fontsLoaded) return [];
-        return calculateFontScales(group.lines, config);
-    }, [group.lines, config, fontsLoaded]);
-
     const lineOffsets = useMemo(() => {
-        if (!fontsLoaded || fontScales.length === 0) return [];
-        return calculateLinePositions(group.lines, config, containerWidth, fontScales);
-    }, [group.lines, config, fontsLoaded, containerWidth, fontScales]);
+        if (!fontsLoaded) return [];
+        return calculateLinePositions(group.lines, config, containerWidth);
+    }, [group.lines, config, fontsLoaded, containerWidth]);
 
-    if (!fontsLoaded || lineOffsets.length === 0 || fontScales.length === 0) {
+    if (!fontsLoaded || lineOffsets.length === 0) {
         return null;
     }
 
@@ -487,10 +476,18 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
                 // ✨ Get animation type based on the line's font_type from config
                 const animationType = getAnimationType(config, line.font_type);
 
+                const nextLine = group.lines[lineIndex + 1];
+                const nextLineStart = nextLine ? nextLine.start : null;
+
+                const durationInFrames = nextLineStart
+                    ? Math.round((nextLineStart - line.start) * fps) + LINE_OVERLAP_FRAMES + FADE_OUT_DURATION_FRAMES
+                    : undefined;
+
                 return (
                     <Sequence
                         key={`line-${lineIndex}`}
                         from={from}
+                        durationInFrames={durationInFrames}
                     >
                         <LineText
                             line={line}
@@ -498,7 +495,8 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
                             translateYOffset={lineOffsets[lineIndex]}
                             style={fontStyle}
                             captionPadding={captionPadding}
-                            fontScale={fontScales[lineIndex]}
+                            nextLineStart={nextLineStart}
+                            groupStart={group.start}
                             animationType={animationType} // ✨ Pass animation type
                         />
                     </Sequence>

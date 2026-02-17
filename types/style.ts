@@ -7,7 +7,13 @@ export type SubtitleStyle = {
     isNew?: boolean;
     isPremium?: boolean;
 };
-
+export type AnimationType =
+    | 'slide-up'
+    | 'slide-down'
+    | 'slide-left'
+    | 'slide-right'
+    | 'scale'
+    | 'fade-blur';
 export interface FontStyleDefinition {
     fontSize: number;
     fontWeight: number;
@@ -19,6 +25,7 @@ export interface FontStyleDefinition {
     strokeColor?: string;
     shadow?: 'none' | 'small' | 'medium' | 'large';
     shadowColor?: string;
+    animationType?: AnimationType;
 }
 
 export interface SubtitleStyleConfig {

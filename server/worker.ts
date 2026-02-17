@@ -134,7 +134,9 @@ async function getNextJob(): Promise<any> {
 /* ================= RENDER ================= */
 async function renderJob(job: any, serveUrl: string): Promise<string> {
     const inputProps = job.input_props;
-    console.log('check inputProps', inputProps.customStyleConfigs);
+
+    // console.log('check inputProps', inputProps.customStyleConfigs);
+    // console.log('check inputProps', inputProps);
 
     const composition = await selectComposition({
         serveUrl,

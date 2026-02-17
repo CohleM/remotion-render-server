@@ -8,10 +8,11 @@ import {
     Sequence,
     delayRender,
     continueRender,
+    spring
 } from 'remotion';
 import { memo } from 'react';
 import { SubtitleGroup, Line } from '../../../types/subtitles';
-import { SubtitleStyleConfig, FontStyleDefinition } from '../../../types/style';
+import { SubtitleStyleConfig, FontStyleDefinition, AnimationType } from '../../../types/style';
 
 // Pre-load common fonts to avoid delayRender issues
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
@@ -27,7 +28,17 @@ loadPoppins();
 loadMontserrat();
 loadOswald();
 
+// ============================================
+// CONFIGURABLE ANIMATION VARIABLES
+// ============================================
 const LINE_SPACING = -25; // Negative spacing for overlapping/intersecting effect
+const FADE_OUT_DURATION_FRAMES = 30; // How long the fade out animation takes
+const MAX_WORD_DISPLAY_SECONDS = 3; // Maximum time a word stays on screen
+// How many frames before the subtitle's real start time to begin the animation.
+// This ensures the word reaches full visibility exactly when it's supposed to appear.
+// Increase this value if animations still feel late; decrease if words appear too early.
+const ANIMATION_ANTICIPATION_FRAMES = 4;
+// ============================================
 
 // Get font styles from config safely
 const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleDefinition => {
@@ -39,6 +50,12 @@ const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleD
     };
 
     return config.fonts[fontType as keyof typeof config.fonts] || defaultStyle;
+};
+
+// Get animation type for a specific font type from config
+const getAnimationType = (config: SubtitleStyleConfig, fontType: string): AnimationType => {
+    const style = config.fonts[fontType as keyof typeof config.fonts];
+    return style?.animationType || 'fade-blur';
 };
 
 // Hook to wait for Google Fonts to load based on config
@@ -137,7 +154,6 @@ const calculateLinePositions = (
 // Build text shadow based on shadow settings
 const buildTextShadow = (style: FontStyleDefinition): string => {
     const shadows: string[] = ['3px 3px 6px rgba(0,0,0,0.3)']; // Default shadow
-    // const shadows: string[] = []
 
     if (style.shadow && style.shadow !== 'none') {
         const blur = style.shadow === 'small' ? 10 : style.shadow === 'medium' ? 20 : 30;
@@ -163,10 +179,6 @@ const buildTextShadow = (style: FontStyleDefinition): string => {
 
 // Build the gradient mask style for the bottom fade effect
 const buildGradientMask = (style: FontStyleDefinition): React.CSSProperties => {
-    // More visible gradient: 
-    // - 0-40%: Full opacity (solid color)
-    // - 40-100%: Gradual fade to transparent
-    // This creates a more pronounced bottom fade effect
     const gradient = 'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 40%, rgba(0,0,0,0.7) 70%, rgba(0,0,0,0) 100%)';
 
     return {
@@ -177,32 +189,161 @@ const buildGradientMask = (style: FontStyleDefinition): React.CSSProperties => {
     };
 };
 
+// Hook to calculate animation values based on type
+const useWordAnimation = (
+    animationType: AnimationType,
+    frame: number,
+    fps: number,
+    wordStartFrame: number
+) => {
+    const animationFrame = Math.max(0, frame - wordStartFrame);
+
+    const springValue = useMemo(() => spring({
+        frame: animationFrame,
+        fps,
+        config: { damping: 100, stiffness: 100 },
+    }), [animationFrame, fps]);
+
+    return useMemo(() => {
+        switch (animationType) {
+            case 'slide-up':
+                return {
+                    transform: `translateY(${interpolate(springValue, [0, 1], [50, 0])}px)`,
+                    opacity: interpolate(springValue, [0, 1], [0, 1]),
+                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
+                };
+
+            case 'slide-down':
+                return {
+                    transform: `translateY(${interpolate(springValue, [0, 1], [-50, 0])}px)`,
+                    opacity: interpolate(springValue, [0, 1], [0, 1]),
+                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
+                };
+
+            case 'slide-left':
+                return {
+                    transform: `translateX(${interpolate(springValue, [0, 1], [100, 0])}px)`,
+                    opacity: interpolate(springValue, [0, 1], [0, 1]),
+                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
+                };
+
+            case 'slide-right':
+                return {
+                    transform: `translateX(${interpolate(springValue, [0, 1], [-100, 0])}px)`,
+                    opacity: interpolate(springValue, [0, 1], [0, 1]),
+                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
+                };
+
+            case 'scale':
+                return {
+                    transform: `scale(${interpolate(springValue, [0, 1], [0.5, 1])})`,
+                    opacity: interpolate(springValue, [0, 1], [0, 1]),
+                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
+                };
+
+            case 'fade-blur':
+                return {
+                    transform: 'none',
+                    opacity: interpolate(springValue, [0, 1], [0, 1]),
+                    filter: `blur(${interpolate(springValue, [0, 1], [10, 0])}px)`,
+                };
+
+            default:
+                return {
+                    transform: `translateY(${interpolate(springValue, [0, 1], [50, 0])}px)`,
+                    opacity: interpolate(springValue, [0, 1], [0, 1]),
+                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
+                };
+        }
+    }, [animationType, springValue]);
+};
+
 const WordText = memo(function WordText({
     word,
     wordIndex,
     lineStart,
     wordStart,
+    wordEnd,
+    lineEnd,
+    animationType,
 }: {
     word: string;
     wordIndex: number;
     lineStart: number;
     wordStart: number;
+    wordEnd: number;
+    lineEnd: number;
+    animationType: AnimationType;
 }) {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
 
     const relativeWordStart = wordStart - lineStart;
-    const wordStartFrame = Math.round(relativeWordStart * fps);
+    // Shift the animation start back by ANIMATION_ANTICIPATION_FRAMES so that
+    // by the time the real subtitle start time is reached, the word is already
+    // fully visible (animation completes right at the intended display time).
+    const wordStartFrame = Math.round(relativeWordStart * fps) - ANIMATION_ANTICIPATION_FRAMES;
 
-    // Word appears at full opacity immediately when its time is reached
-    const isVisible = frame >= wordStartFrame;
+    // Calculate when this word should start fading out (2 seconds after the real appearance time).
+    // We base this on the original (non-shifted) start so fade-out timing is unaffected.
+    const realWordStartFrame = Math.round(relativeWordStart * fps);
+    const maxDisplayFrames = MAX_WORD_DISPLAY_SECONDS * fps;
+    const fadeOutStartFrame = realWordStartFrame + maxDisplayFrames;
+
+    // Determine fade out end based on either 2-second limit or line end, whichever comes first
+    const relativeWordEnd = wordEnd - lineStart;
+    const wordEndFrame = Math.round(relativeWordEnd * fps);
+    const fadeOutEndFrame = Math.min(fadeOutStartFrame + FADE_OUT_DURATION_FRAMES, wordEndFrame);
+
+    // Get entry animation values (now starts ANIMATION_ANTICIPATION_FRAMES earlier)
+    const entryAnimation = useWordAnimation(animationType, frame, fps, wordStartFrame);
+
+    const { opacity, transform, filter } = useMemo(() => {
+        // Entry animation values
+        const entryOpacity = entryAnimation.opacity;
+        const entryTransform = entryAnimation.transform;
+        const entryFilter = entryAnimation.filter;
+
+        // Check if we should start fading out (2 seconds after real appearance time)
+        if (frame < fadeOutStartFrame) {
+            return {
+                opacity: entryOpacity,
+                transform: entryTransform,
+                filter: entryFilter
+            };
+        }
+
+        // If we're past the word's end time, it's fully invisible
+        if (frame >= fadeOutEndFrame) {
+            return {
+                opacity: 0,
+                transform: entryTransform,
+                filter: 'blur(10px)'
+            };
+        }
+
+        // Calculate fade out progress
+        const fadeOutProgress = (frame - fadeOutStartFrame) / (fadeOutEndFrame - fadeOutStartFrame);
+        const fadeOutOpacity = interpolate(fadeOutProgress, [0, 1], [entryOpacity, 0]);
+        const fadeOutBlur = interpolate(fadeOutProgress, [0, 1], [0, 10]);
+
+        // Combine entry transform with fade out
+        return {
+            opacity: fadeOutOpacity,
+            transform: entryTransform,
+            filter: `blur(${fadeOutBlur}px)`
+        };
+    }, [entryAnimation, frame, fadeOutStartFrame, fadeOutEndFrame]);
 
     return (
         <span style={{
             display: 'inline-block',
-            opacity: isVisible ? 1 : 0,
+            transform,
+            opacity,
+            filter,
             marginRight: '0.3em',
             whiteSpace: 'pre',
+            willChange: 'transform, opacity, filter',
         }}>
             {word}
         </span>
@@ -216,12 +357,16 @@ const LineText = memo(function LineText({
     translateYOffset,
     style,
     captionPadding,
+    lineEnd,
+    animationType,
 }: {
     line: Line;
     lineIndex: number;
     translateYOffset: number;
     style: FontStyleDefinition;
     captionPadding: number;
+    lineEnd: number;
+    animationType: AnimationType;
 }) {
     // ✅ Memoize expensive style calculations
     const textShadow = useMemo(() => buildTextShadow(style), [style]);
@@ -269,6 +414,9 @@ const LineText = memo(function LineText({
                         wordIndex={wordIndex}
                         lineStart={line.start}
                         wordStart={word.start}
+                        wordEnd={word.end}
+                        lineEnd={lineEnd}
+                        animationType={animationType}
                     />
                 ))}
             </div>
@@ -282,16 +430,13 @@ type ThreeLinesProps = {
     captionPadding?: number;
 };
 
-export const GradientBelow: React.FC<ThreeLinesProps> = ({
+export const GradientBase: React.FC<ThreeLinesProps> = ({
     group,
     config,
     captionPadding = 540
 }) => {
     const { fps, width } = useVideoConfig();
     const fontsLoaded = useFontsLoaded(config);
-
-
-    // console.log('this is CustomStyleConfigs', config.fonts.bold)
 
     if (!group?.lines?.length) {
         console.error('Invalid group data:', group);
@@ -313,8 +458,18 @@ export const GradientBelow: React.FC<ThreeLinesProps> = ({
         <AbsoluteFill>
             {group.lines.map((line, lineIndex) => {
                 const relativeStart = line.start - group.start;
-                const from = Math.round(relativeStart * fps);
+                // Start the Sequence earlier so animation has time to play before
+                // the subtitle's real display time. Clamped to 0 to avoid negative frames.
+                const from = Math.max(0, Math.round(relativeStart * fps) - ANIMATION_ANTICIPATION_FRAMES);
+                // console.log('hehehe ', lineIndex, relativeStart, from);
                 const fontStyle = getFontStyle(config, line.font_type);
+
+                // Get animation type based on the line's font_type
+                const animationType = getAnimationType(config, line.font_type);
+
+                // Calculate line end time for word fade out limits
+                const nextLine = group.lines[lineIndex + 1];
+                const lineEndTime = nextLine ? nextLine.start : (group.start + (line.words[line.words.length - 1]?.end || line.end));
 
                 return (
                     <Sequence
@@ -327,6 +482,8 @@ export const GradientBelow: React.FC<ThreeLinesProps> = ({
                             translateYOffset={lineOffsets[lineIndex]}
                             style={fontStyle}
                             captionPadding={captionPadding}
+                            lineEnd={lineEndTime}
+                            animationType={animationType}
                         />
                     </Sequence>
                 );

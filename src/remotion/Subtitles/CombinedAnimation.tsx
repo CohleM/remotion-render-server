@@ -12,7 +12,7 @@ import {
 } from 'remotion';
 import { memo } from 'react';
 import { SubtitleGroup, Line } from '../../../types/subtitles';
-import { SubtitleStyleConfig, FontStyleDefinition, AnimationType } from '../../../types/style';
+import { SubtitleStyleConfig, FontStyleDefinition } from '../../../types/style';
 
 // Pre-load common fonts to avoid delayRender issues
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
@@ -29,10 +29,84 @@ loadMontserrat();
 loadOswald();
 
 const LINE_SPACING = 0;
+const MAX_FONT_SIZE = 100; // Maximum allowed font size in pixels
 const ANIMATION_ANTICIPATION_FRAMES = 4;
 const FADE_OUT_DURATION_FRAMES = 30;
 const MAX_WORD_DISPLAY_SECONDS = 3;
-const MAX_FONT_SIZE = 100; // ✨ Maximum allowed font size in pixels
+
+// Animation types
+export type AnimationType =
+    | 'slide-up'
+    | 'slide-down'
+    | 'slide-left'
+    | 'slide-right'
+    | 'scale'
+    | 'fade-blur';
+
+const ALL_ANIMATION_TYPES: AnimationType[] = [
+    'slide-up',
+    'slide-down',
+    'slide-left',
+    'slide-right',
+    'scale',
+    'fade-blur',
+];
+
+// Seeded random number generator for deterministic animations
+class SeededRandom {
+    private seed: number;
+
+    constructor(seed: string | number) {
+        // Convert string seed to number using simple hash
+        if (typeof seed === 'string') {
+            let hash = 0;
+            for (let i = 0; i < seed.length; i++) {
+                const char = seed.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            this.seed = Math.abs(hash);
+        } else {
+            this.seed = seed;
+        }
+    }
+
+    // Returns random number between 0 and 1 (deterministic based on seed)
+    next(): number {
+        // Linear Congruential Generator
+        this.seed = (this.seed * 9301 + 49297) % 233280;
+        return this.seed / 233280;
+    }
+
+    // Fisher-Yates shuffle with seeded random
+    shuffle<T>(array: T[]): T[] {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(this.next() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+    }
+}
+
+// Get distinct random animations for each line using seeded random
+const getDistinctAnimationsForLines = (
+    lineCount: number,
+    seed: string | number
+): AnimationType[] => {
+    const rng = new SeededRandom(seed);
+
+    if (lineCount <= ALL_ANIMATION_TYPES.length) {
+        return rng.shuffle(ALL_ANIMATION_TYPES).slice(0, lineCount);
+    } else {
+        const animations: AnimationType[] = [];
+        while (animations.length < lineCount) {
+            const shuffled = rng.shuffle(ALL_ANIMATION_TYPES);
+            animations.push(...shuffled);
+        }
+        return animations.slice(0, lineCount);
+    }
+};
 
 // Get font styles from config safely
 const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleDefinition => {
@@ -44,12 +118,6 @@ const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleD
     };
 
     return config.fonts[fontType as keyof typeof config.fonts] || defaultStyle;
-};
-
-// Get animation type for a specific font type from config
-const getAnimationType = (config: SubtitleStyleConfig, fontType: string): AnimationType => {
-    const style = config.fonts[fontType as keyof typeof config.fonts];
-    return style?.animationType || 'fade-blur';
 };
 
 // Hook to wait for Google Fonts to load based on config
@@ -107,14 +175,13 @@ const measureTextWidth = (
     return width;
 };
 
-// ✨ UPDATED: Calculate font size scale factors with max font size capping
+// Calculate font size scale factors for each line to match widest line, with max cap
 const calculateFontScales = (
     lines: Line[],
     config: SubtitleStyleConfig
 ): number[] => {
     if (lines.length === 0) return [];
 
-    // Measure width of each line with its original font style
     const lineWidths = lines.map((line) => {
         const style = getFontStyle(config, line.font_type);
         const text = line.words.map(w => w.word).join(' ');
@@ -124,10 +191,8 @@ const calculateFontScales = (
         };
     });
 
-    // Find the maximum width
     const maxWidth = Math.max(...lineWidths.map(lw => lw.width));
 
-    // Calculate scale factor for each line with max font size cap
     const scales = lineWidths.map((lw) => {
         if (lw.width === 0) return 1;
 
@@ -135,7 +200,7 @@ const calculateFontScales = (
         const rawScale = maxWidth / lw.width;
         const scaledFontSize = lw.fontSize * rawScale;
 
-        // ✨ If scaled font size exceeds MAX_FONT_SIZE, cap it
+        // If scaled font size exceeds MAX_FONT_SIZE, cap it
         if (scaledFontSize > MAX_FONT_SIZE) {
             return MAX_FONT_SIZE / lw.fontSize;
         }
@@ -147,7 +212,7 @@ const calculateFontScales = (
     return scales;
 };
 
-// Measure actual rendered height of text content (updated to use scaled font size)
+// Measure actual rendered height of text content (with scaled font size)
 const measureActualTextHeight = (
     text: string,
     style: FontStyleDefinition,
@@ -212,7 +277,7 @@ const calculateLinePositions = (
 
 // Build text shadow based on shadow settings
 const buildTextShadow = (style: FontStyleDefinition): string => {
-    const shadows: string[] = ['3px 3px 6px rgba(0,0,0,0.9)'];
+    const shadows: string[] = ['2px 2px 2px rgba(0,0,0,0.4)'];
 
     if (style.shadow && style.shadow !== 'none') {
         const blur = style.shadow === 'small' ? 10 : style.shadow === 'medium' ? 20 : 30;
@@ -235,7 +300,7 @@ const buildTextShadow = (style: FontStyleDefinition): string => {
     return shadows.join(', ');
 };
 
-// ✨ NEW: Hook to calculate animation values based on type
+// Hook to calculate animation values based on type
 const useWordAnimation = (
     animationType: AnimationType,
     frame: number,
@@ -304,7 +369,6 @@ const useWordAnimation = (
     }, [animationType, springValue]);
 };
 
-// ✨ UPDATED: WordText now accepts animationType prop
 const WordText = memo(function WordText({
     word,
     wordIndex,
@@ -334,7 +398,6 @@ const WordText = memo(function WordText({
     const wordEndFrame = Math.round(relativeWordEnd * fps);
     const fadeOutEndFrame = Math.min(fadeOutStartFrame + FADE_OUT_DURATION_FRAMES, wordEndFrame);
 
-    // ✨ Use the new animation hook
     const entryAnimation = useWordAnimation(animationType, frame, fps, wordStartFrame);
 
     const { opacity, transform, filter } = useMemo(() => {
@@ -372,23 +435,24 @@ const WordText = memo(function WordText({
     );
 });
 
-// ✨ UPDATED: LineText now accepts fontScale and animationType props
 const LineText = memo(function LineText({
     line,
     lineIndex,
     translateYOffset,
     style,
     captionPadding,
-    fontScale,
     animationType,
+    fontScale,
+    lineEnd,
 }: {
     line: Line;
     lineIndex: number;
     translateYOffset: number;
     style: FontStyleDefinition;
     captionPadding: number;
-    fontScale: number;
     animationType: AnimationType;
+    fontScale: number;
+    lineEnd: number;
 }) {
     const textShadow = useMemo(() => buildTextShadow(style), [style]);
 
@@ -433,7 +497,7 @@ const LineText = memo(function LineText({
                         lineStart={line.start}
                         wordStart={word.start}
                         wordEnd={word.end}
-                        animationType={animationType} // ✨ Pass animation type
+                        animationType={animationType}
                     />
                 ))}
             </div>
@@ -447,10 +511,10 @@ type ThreeLinesProps = {
     captionPadding?: number;
 };
 
-export const EqualWidth: React.FC<ThreeLinesProps> = ({
+export const CombinedAnimation: React.FC<ThreeLinesProps> = ({
     group,
     config,
-    captionPadding = 540
+    captionPadding = 540,
 }) => {
     const { fps, width } = useVideoConfig();
     const fontsLoaded = useFontsLoaded(config);
@@ -462,11 +526,23 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
 
     const containerWidth = width * 0.9;
 
-    // Calculate font scales with max font size capping
+    // Calculate font scales to equalize line widths (with max cap)
     const fontScales = useMemo(() => {
         if (!fontsLoaded) return [];
         return calculateFontScales(group.lines, config);
     }, [group.lines, config, fontsLoaded]);
+
+    // Create a deterministic seed based on group start time
+    // This ensures the same group always gets the same animations
+    const animationSeed = useMemo(() => {
+        // Use group start time as seed - converts to string with fixed precision
+        return group.start.toFixed(3);
+    }, [group.start]);
+
+    // Generate distinct random animations for each line using seeded random
+    const lineAnimations = useMemo(() => {
+        return getDistinctAnimationsForLines(group.lines.length, animationSeed);
+    }, [group.lines.length, animationSeed]);
 
     const lineOffsets = useMemo(() => {
         if (!fontsLoaded || fontScales.length === 0) return [];
@@ -477,15 +553,18 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
         return null;
     }
 
+
+
     return (
         <AbsoluteFill>
             {group.lines.map((line, lineIndex) => {
                 const relativeStart = line.start - group.start;
                 const from = Math.max(0, Math.round(relativeStart * fps) - ANIMATION_ANTICIPATION_FRAMES);
                 const fontStyle = getFontStyle(config, line.font_type);
+                const animationType = lineAnimations[lineIndex];
 
-                // ✨ Get animation type based on the line's font_type from config
-                const animationType = getAnimationType(config, line.font_type);
+                const nextLine = group.lines[lineIndex + 1];
+                const lineEndTime = nextLine ? nextLine.start : (group.start + (line.words[line.words.length - 1]?.end || line.end));
 
                 return (
                     <Sequence
@@ -498,8 +577,9 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
                             translateYOffset={lineOffsets[lineIndex]}
                             style={fontStyle}
                             captionPadding={captionPadding}
+                            animationType={animationType}
                             fontScale={fontScales[lineIndex]}
-                            animationType={animationType} // ✨ Pass animation type
+                            lineEnd={lineEndTime}
                         />
                     </Sequence>
                 );

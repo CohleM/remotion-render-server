@@ -1,4 +1,4 @@
-// src/remotion/Subtitles/ThreeLines.tsx
+// src/remotion/Subtitles/NormalAndItalic.tsx
 import React, { useMemo, useState, useEffect } from 'react';
 import {
     AbsoluteFill,
@@ -20,6 +20,7 @@ import { loadFont as loadBebas } from '@remotion/google-fonts/BebasNeue';
 import { loadFont as loadPoppins } from '@remotion/google-fonts/Poppins';
 import { loadFont as loadMontserrat } from '@remotion/google-fonts/Montserrat';
 import { loadFont as loadOswald } from '@remotion/google-fonts/Oswald';
+import { loadFont as loadCormorantGaramond } from '@remotion/google-fonts/CormorantGaramond';
 
 // Initialize fonts
 loadInter();
@@ -27,12 +28,19 @@ loadBebas();
 loadPoppins();
 loadMontserrat();
 loadOswald();
+loadCormorantGaramond();
 
+// ============================================
+// CONFIGURABLE ANIMATION VARIABLES
+// ============================================
 const LINE_SPACING = 0;
+const FADE_OUT_DURATION_FRAMES = 30; // How long the fade out animation takes
+const MAX_WORD_DISPLAY_SECONDS = 3; // Maximum time a word stays on screen
 const ANIMATION_ANTICIPATION_FRAMES = 4;
-const FADE_OUT_DURATION_FRAMES = 30;
-const MAX_WORD_DISPLAY_SECONDS = 3;
-const MAX_FONT_SIZE = 100; // ✨ Maximum allowed font size in pixels
+// ============================================
+
+// Animation types
+
 
 // Get font styles from config safely
 const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleDefinition => {
@@ -84,80 +92,16 @@ const useFontsLoaded = (config: SubtitleStyleConfig) => {
     return loaded;
 };
 
-// Measure text width with a given font style
-const measureTextWidth = (
-    text: string,
-    style: FontStyleDefinition
-): number => {
-    const tempSpan = document.createElement('span');
-    tempSpan.style.position = 'absolute';
-    tempSpan.style.visibility = 'hidden';
-    tempSpan.style.fontSize = `${style.fontSize}px`;
-    tempSpan.style.fontFamily = `"${style.fontFamily}", sans-serif`;
-    tempSpan.style.fontWeight = String(style.fontWeight);
-    tempSpan.style.fontStyle = style.fontStyle || 'normal';
-    tempSpan.style.whiteSpace = 'nowrap';
-    tempSpan.style.textTransform = style.uppercase ? 'uppercase' : 'none';
-    tempSpan.textContent = text;
-
-    document.body.appendChild(tempSpan);
-    const width = tempSpan.offsetWidth;
-    document.body.removeChild(tempSpan);
-
-    return width;
-};
-
-// ✨ UPDATED: Calculate font size scale factors with max font size capping
-const calculateFontScales = (
-    lines: Line[],
-    config: SubtitleStyleConfig
-): number[] => {
-    if (lines.length === 0) return [];
-
-    // Measure width of each line with its original font style
-    const lineWidths = lines.map((line) => {
-        const style = getFontStyle(config, line.font_type);
-        const text = line.words.map(w => w.word).join(' ');
-        return {
-            width: measureTextWidth(text, style),
-            fontSize: style.fontSize
-        };
-    });
-
-    // Find the maximum width
-    const maxWidth = Math.max(...lineWidths.map(lw => lw.width));
-
-    // Calculate scale factor for each line with max font size cap
-    const scales = lineWidths.map((lw) => {
-        if (lw.width === 0) return 1;
-
-        // Calculate what the scaled font size would be
-        const rawScale = maxWidth / lw.width;
-        const scaledFontSize = lw.fontSize * rawScale;
-
-        // ✨ If scaled font size exceeds MAX_FONT_SIZE, cap it
-        if (scaledFontSize > MAX_FONT_SIZE) {
-            return MAX_FONT_SIZE / lw.fontSize;
-        }
-
-        // Otherwise use the original scale to match widths
-        return rawScale;
-    });
-
-    return scales;
-};
-
-// Measure actual rendered height of text content (updated to use scaled font size)
+// Measure actual rendered height of text content
 const measureActualTextHeight = (
     text: string,
     style: FontStyleDefinition,
-    containerWidth: number,
-    scale: number = 1
+    containerWidth: number
 ): number => {
     const tempDiv = document.createElement('div');
     tempDiv.style.position = 'absolute';
     tempDiv.style.visibility = 'hidden';
-    tempDiv.style.fontSize = `${style.fontSize * scale}px`;
+    tempDiv.style.fontSize = `${style.fontSize}px`;
     tempDiv.style.fontFamily = `"${style.fontFamily}", sans-serif`;
     tempDiv.style.fontWeight = String(style.fontWeight);
     tempDiv.style.fontStyle = style.fontStyle || 'normal';
@@ -188,16 +132,14 @@ const measureActualTextHeight = (
 const calculateLinePositions = (
     lines: Line[],
     config: SubtitleStyleConfig,
-    containerWidth: number,
-    fontScales: number[]
+    containerWidth: number
 ): number[] => {
     if (lines.length === 0) return [];
 
-    const lineHeights = lines.map((line, index) => {
+    const lineHeights = lines.map((line) => {
         const style = getFontStyle(config, line.font_type);
         const text = line.words.map(w => w.word).join(' ');
-        const scale = fontScales[index] || 1;
-        return measureActualTextHeight(text, style, containerWidth, scale);
+        return measureActualTextHeight(text, style, containerWidth);
     });
 
     const offsets: number[] = [0];
@@ -212,7 +154,7 @@ const calculateLinePositions = (
 
 // Build text shadow based on shadow settings
 const buildTextShadow = (style: FontStyleDefinition): string => {
-    const shadows: string[] = ['3px 3px 6px rgba(0,0,0,0.9)'];
+    const shadows: string[] = ['2px 2px 4px rgba(0,0,0,0.4)']; // Default shadow
 
     if (style.shadow && style.shadow !== 'none') {
         const blur = style.shadow === 'small' ? 10 : style.shadow === 'medium' ? 20 : 30;
@@ -223,6 +165,7 @@ const buildTextShadow = (style: FontStyleDefinition): string => {
     if (style.strokeWeight && style.strokeWeight !== 'none') {
         const width = style.strokeWeight === 'small' ? 1 : style.strokeWeight === 'medium' ? 2 : 3;
         const color = style.strokeColor || '#000000';
+        // Create outline effect using multiple shadows
         for (let x = -width; x <= width; x++) {
             for (let y = -width; y <= width; y++) {
                 if (x !== 0 || y !== 0) {
@@ -235,7 +178,7 @@ const buildTextShadow = (style: FontStyleDefinition): string => {
     return shadows.join(', ');
 };
 
-// ✨ NEW: Hook to calculate animation values based on type
+// Hook to calculate animation values based on type
 const useWordAnimation = (
     animationType: AnimationType,
     frame: number,
@@ -304,13 +247,13 @@ const useWordAnimation = (
     }, [animationType, springValue]);
 };
 
-// ✨ UPDATED: WordText now accepts animationType prop
 const WordText = memo(function WordText({
     word,
     wordIndex,
     lineStart,
     wordStart,
     wordEnd,
+    lineEnd,
     animationType,
 }: {
     word: string;
@@ -318,6 +261,7 @@ const WordText = memo(function WordText({
     lineStart: number;
     wordStart: number;
     wordEnd: number;
+    lineEnd: number;
     animationType: AnimationType;
 }) {
     const frame = useCurrentFrame();
@@ -326,35 +270,55 @@ const WordText = memo(function WordText({
     const relativeWordStart = wordStart - lineStart;
     const wordStartFrame = Math.round(relativeWordStart * fps) - ANIMATION_ANTICIPATION_FRAMES;
     const realWordStartFrame = Math.round(relativeWordStart * fps);
+    // const animationFrame = Math.max(0, frame - wordStartFrame);
 
+    // Calculate when this word should start fading out (2 seconds after appearance)
     const maxDisplayFrames = MAX_WORD_DISPLAY_SECONDS * fps;
     const fadeOutStartFrame = realWordStartFrame + maxDisplayFrames;
 
+    // Determine fade out end based on either 2-second limit or line end, whichever comes first
     const relativeWordEnd = wordEnd - lineStart;
     const wordEndFrame = Math.round(relativeWordEnd * fps);
     const fadeOutEndFrame = Math.min(fadeOutStartFrame + FADE_OUT_DURATION_FRAMES, wordEndFrame);
 
-    // ✨ Use the new animation hook
+    // Get entry animation values
     const entryAnimation = useWordAnimation(animationType, frame, fps, wordStartFrame);
 
     const { opacity, transform, filter } = useMemo(() => {
+        // Entry animation values
         const entryOpacity = entryAnimation.opacity;
         const entryTransform = entryAnimation.transform;
         const entryFilter = entryAnimation.filter;
 
+        // Check if we should start fading out (2 seconds after appearance)
         if (frame < fadeOutStartFrame) {
-            return { opacity: entryOpacity, transform: entryTransform, filter: entryFilter };
+            return {
+                opacity: entryOpacity,
+                transform: entryTransform,
+                filter: entryFilter
+            };
         }
 
+        // If we're past the word's end time, it's fully invisible
         if (frame >= fadeOutEndFrame) {
-            return { opacity: 0, transform: entryTransform, filter: 'blur(10px)' };
+            return {
+                opacity: 0,
+                transform: entryTransform,
+                filter: 'blur(10px)'
+            };
         }
 
+        // Calculate fade out progress
         const fadeOutProgress = (frame - fadeOutStartFrame) / (fadeOutEndFrame - fadeOutStartFrame);
         const fadeOutOpacity = interpolate(fadeOutProgress, [0, 1], [entryOpacity, 0]);
         const fadeOutBlur = interpolate(fadeOutProgress, [0, 1], [0, 10]);
 
-        return { opacity: fadeOutOpacity, transform: entryTransform, filter: `blur(${fadeOutBlur}px)` };
+        // Combine entry transform with fade out (optional: could add exit transform)
+        return {
+            opacity: fadeOutOpacity,
+            transform: entryTransform,
+            filter: `blur(${fadeOutBlur}px)`
+        };
     }, [entryAnimation, frame, fadeOutStartFrame, fadeOutEndFrame]);
 
     return (
@@ -372,14 +336,14 @@ const WordText = memo(function WordText({
     );
 });
 
-// ✨ UPDATED: LineText now accepts fontScale and animationType props
+// Wrap LineText in memo
 const LineText = memo(function LineText({
     line,
     lineIndex,
     translateYOffset,
     style,
     captionPadding,
-    fontScale,
+    lineEnd,
     animationType,
 }: {
     line: Line;
@@ -387,9 +351,10 @@ const LineText = memo(function LineText({
     translateYOffset: number;
     style: FontStyleDefinition;
     captionPadding: number;
-    fontScale: number;
+    lineEnd: number;
     animationType: AnimationType;
 }) {
+    // ✅ Memoize expensive style calculations
     const textShadow = useMemo(() => buildTextShadow(style), [style]);
 
     const textStroke = useMemo(() => {
@@ -406,7 +371,7 @@ const LineText = memo(function LineText({
 
     const textStyle = useMemo(() => ({
         transform: `translateY(${translateYOffset}px)`,
-        fontSize: style.fontSize * fontScale,
+        fontSize: style.fontSize,
         fontFamily: `"${style.fontFamily}", sans-serif`,
         fontWeight: style.fontWeight,
         fontStyle: style.fontStyle || 'normal',
@@ -420,20 +385,21 @@ const LineText = memo(function LineText({
         alignItems: 'baseline',
         textTransform: style.uppercase ? 'uppercase' : 'none' as const,
         WebkitTextStroke: textStroke,
-    }), [translateYOffset, style, textShadow, textStroke, fontScale]);
+    }), [translateYOffset, style, textShadow, textStroke]);
 
     return (
         <AbsoluteFill style={containerStyle}>
             <div style={textStyle}>
                 {line.words.map((word, wordIndex) => (
                     <WordText
-                        key={`${word.id}-${wordIndex}`}
+                        key={`${word.id}-${wordIndex}`} // Stable key using word.id
                         word={word.word}
                         wordIndex={wordIndex}
                         lineStart={line.start}
                         wordStart={word.start}
                         wordEnd={word.end}
-                        animationType={animationType} // ✨ Pass animation type
+                        lineEnd={lineEnd}
+                        animationType={animationType}
                     />
                 ))}
             </div>
@@ -447,7 +413,7 @@ type ThreeLinesProps = {
     captionPadding?: number;
 };
 
-export const EqualWidth: React.FC<ThreeLinesProps> = ({
+export const NormalAndBold: React.FC<ThreeLinesProps> = ({
     group,
     config,
     captionPadding = 540
@@ -462,18 +428,12 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
 
     const containerWidth = width * 0.9;
 
-    // Calculate font scales with max font size capping
-    const fontScales = useMemo(() => {
-        if (!fontsLoaded) return [];
-        return calculateFontScales(group.lines, config);
-    }, [group.lines, config, fontsLoaded]);
-
     const lineOffsets = useMemo(() => {
-        if (!fontsLoaded || fontScales.length === 0) return [];
-        return calculateLinePositions(group.lines, config, containerWidth, fontScales);
-    }, [group.lines, config, fontsLoaded, containerWidth, fontScales]);
+        if (!fontsLoaded) return [];
+        return calculateLinePositions(group.lines, config, containerWidth);
+    }, [group.lines, config, fontsLoaded, containerWidth]);
 
-    if (!fontsLoaded || lineOffsets.length === 0 || fontScales.length === 0) {
+    if (!fontsLoaded || lineOffsets.length === 0) {
         return null;
     }
 
@@ -484,8 +444,12 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
                 const from = Math.max(0, Math.round(relativeStart * fps) - ANIMATION_ANTICIPATION_FRAMES);
                 const fontStyle = getFontStyle(config, line.font_type);
 
-                // ✨ Get animation type based on the line's font_type from config
+                // Get animation type based on the line's font_type
                 const animationType = getAnimationType(config, line.font_type);
+
+                // Calculate line end time for word fade out limits
+                const nextLine = group.lines[lineIndex + 1];
+                const lineEndTime = nextLine ? nextLine.start : (group.start + (line.words[line.words.length - 1]?.end || line.end));
 
                 return (
                     <Sequence
@@ -498,8 +462,8 @@ export const EqualWidth: React.FC<ThreeLinesProps> = ({
                             translateYOffset={lineOffsets[lineIndex]}
                             style={fontStyle}
                             captionPadding={captionPadding}
-                            fontScale={fontScales[lineIndex]}
-                            animationType={animationType} // ✨ Pass animation type
+                            lineEnd={lineEndTime}
+                            animationType={animationType}
                         />
                     </Sequence>
                 );
