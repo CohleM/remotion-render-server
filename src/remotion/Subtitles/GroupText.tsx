@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     AbsoluteFill,
     interpolate,
@@ -11,9 +11,9 @@ import {
 
 // Import Google Fonts
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
-import { loadFont as loadMontserrat } from '@remotion/google-fonts/Montserrat';
+// import { loadFont as loadMontserrat } from '@remotion/google-fonts/Montserrat';
 import { loadFont as loadOswald } from '@remotion/google-fonts/BebasNeue';
-import { loadFont as loadPlayfair } from '@remotion/google-fonts/PlayfairDisplay';
+// import { loadFont as loadPlayfair } from '@remotion/google-fonts/PlayfairDisplay';
 
 type Word = {
     word: string;
@@ -40,9 +40,9 @@ const LINE_SPACING = 20; // Add some spacing between lines
 
 // Initialize fonts
 const inter = loadInter();
-const montserrat = loadMontserrat();
+// const montserrat = loadMontserrat();
 const oswald = loadOswald();
-const playfair = loadPlayfair();
+// const playfair = loadPlayfair();
 
 // Each line can have its own fontSize, fontFamily, and fontWeight
 const GOOGLE_FONT_STYLES = [

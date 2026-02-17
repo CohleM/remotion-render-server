@@ -1,7 +1,9 @@
-import { getStyleConfig } from '../config/styleConfigs';
+// import { getStyleConfig } from '../config/styleConfigs';
 import { SubtitleStyleConfig } from '../../types/style';
 import { SubtitleGroup } from '../../types/subtitles';
-import { ThreeLines } from './Subtitles/ThreeLines';
+import { EqualWidth } from './Subtitles/EqualWidth';
+import { GradientBelow } from './Subtitles/GradientBelow';
+import { SolidTransparent } from './Subtitles/SolidTransparent';
 
 type StyleRendererProps = {
     group: SubtitleGroup;
@@ -24,7 +26,12 @@ export const StyleRenderer: React.FC<StyleRendererProps> = ({
         case 'jack':
         case 'basic':
         default:
-            return <ThreeLines
+            // return <EqualWidth
+            //     group={group}
+            //     config={config}
+            //     captionPadding={captionPadding}
+            // />;
+            return <SolidTransparent
                 group={group}
                 config={config}
                 captionPadding={captionPadding}

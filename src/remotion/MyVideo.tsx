@@ -1,10 +1,11 @@
 // src/remotion/MyVideo.tsx - IMPROVED VERSION
-import { AbsoluteFill, Sequence, useVideoConfig, Html5Video, staticFile } from 'remotion';
+import { AbsoluteFill, Sequence, useVideoConfig } from 'remotion';
 import { SubtitleGroup } from '../../types/subtitles';
 import { StyleRenderer } from './StyleRenderer';
 import { SubtitleStyleConfig } from '../../types/style';
 import { memo, useMemo } from 'react';
 import { Video } from '@remotion/media';
+
 type MainProps = {
     groups: SubtitleGroup[];
     style?: string;
@@ -60,6 +61,8 @@ export const MyVideo: React.FC<MainProps> = memo(({
                 </Sequence>
             ))}
             <Video src={videoUrl} />
+            {/* <Video src="" /> */}
+            {/* <Html5Video src={videoUrl} /> */}
         </AbsoluteFill>
     );
 });
