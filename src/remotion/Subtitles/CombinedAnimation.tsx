@@ -513,10 +513,23 @@ type ThreeLinesProps = {
 
 export const CombinedAnimation: React.FC<ThreeLinesProps> = ({
     group,
-    config,
+    config: rawConfig,
     captionPadding = 540,
 }) => {
-    const { fps, width } = useVideoConfig();
+    const { fps, width, height } = useVideoConfig();
+
+    const config = useMemo(() => {
+        const scale = height / 1920;
+        return {
+            ...rawConfig,
+            fonts: Object.fromEntries(
+                Object.entries(rawConfig.fonts).map(([key, style]) => [
+                    key,
+                    { ...style, fontSize: Math.round(style.fontSize * scale) }
+                ])
+            ) as SubtitleStyleConfig['fonts']  // 👈 cast back to the original type
+        };
+    }, [rawConfig, height]);
     const fontsLoaded = useFontsLoaded(config);
 
     if (!group?.lines?.length) {
@@ -552,8 +565,6 @@ export const CombinedAnimation: React.FC<ThreeLinesProps> = ({
     if (!fontsLoaded || lineOffsets.length === 0 || fontScales.length === 0) {
         return null;
     }
-
-
 
     return (
         <AbsoluteFill>

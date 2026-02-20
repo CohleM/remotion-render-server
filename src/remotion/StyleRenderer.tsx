@@ -25,8 +25,6 @@ export const StyleRenderer: React.FC<StyleRendererProps> = ({
 }) => {
     // const config = getStyleConfig(style, customConfigs);
     const config = customConfigs
-
-
     switch (style) {
         case 'matt':
         case 'FaB':
@@ -63,6 +61,12 @@ export const StyleRenderer: React.FC<StyleRendererProps> = ({
                 config={config}
                 captionPadding={captionPadding}
             />;
+        // case 'NaI': //normal and italic
+        //     return <NormalAndItalic
+        //         group={group}
+        //         config={config}
+        //         captionPadding={captionPadding}
+        //     />;
         case 'NaI':
         case 'NaB': //normal and italic
             return <NormalAndBold

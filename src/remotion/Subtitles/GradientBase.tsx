@@ -130,7 +130,8 @@ const measureActualTextHeight = (
 const calculateLinePositions = (
     lines: Line[],
     config: SubtitleStyleConfig,
-    containerWidth: number
+    containerWidth: number,
+    lineSpacing: number
 ): number[] => {
     if (lines.length === 0) return [];
 
@@ -146,7 +147,7 @@ const calculateLinePositions = (
         const previousHeight = lineHeights[i - 1];
         const previousOffset = offsets[i - 1];
         // Negative LINE_SPACING creates the overlapping/intersecting effect
-        offsets.push(previousOffset + previousHeight + LINE_SPACING);
+        offsets.push(previousOffset + previousHeight + lineSpacing);
     }
     return offsets;
 };
@@ -432,10 +433,24 @@ type ThreeLinesProps = {
 
 export const GradientBase: React.FC<ThreeLinesProps> = ({
     group,
-    config,
+    config: rawConfig,
     captionPadding = 540
 }) => {
-    const { fps, width } = useVideoConfig();
+    const { fps, width, height } = useVideoConfig();
+
+    const config = useMemo(() => {
+        const scale = height / 1920;
+        return {
+            ...rawConfig,
+            fonts: Object.fromEntries(
+                Object.entries(rawConfig.fonts).map(([key, style]) => [
+                    key,
+                    { ...style, fontSize: Math.round(style.fontSize * scale) }
+                ])
+            ) as SubtitleStyleConfig['fonts']  // 👈 cast back to the original type
+        };
+    }, [rawConfig, height]);
+    const lineSpacing = useMemo(() => Math.round(LINE_SPACING * (height / 1920)), [height]);
     const fontsLoaded = useFontsLoaded(config);
 
     if (!group?.lines?.length) {
@@ -447,7 +462,7 @@ export const GradientBase: React.FC<ThreeLinesProps> = ({
 
     const lineOffsets = useMemo(() => {
         if (!fontsLoaded) return [];
-        return calculateLinePositions(group.lines, config, containerWidth);
+        return calculateLinePositions(group.lines, config, containerWidth, lineSpacing);
     }, [group.lines, config, fontsLoaded, containerWidth]);
 
     if (!fontsLoaded || lineOffsets.length === 0) {
@@ -461,7 +476,7 @@ export const GradientBase: React.FC<ThreeLinesProps> = ({
                 // Start the Sequence earlier so animation has time to play before
                 // the subtitle's real display time. Clamped to 0 to avoid negative frames.
                 const from = Math.max(0, Math.round(relativeStart * fps) - ANIMATION_ANTICIPATION_FRAMES);
-                // console.log('hehehe ', lineIndex, relativeStart, from);
+                console.log('hehehe ', lineIndex, relativeStart, from);
                 const fontStyle = getFontStyle(config, line.font_type);
 
                 // Get animation type based on the line's font_type
