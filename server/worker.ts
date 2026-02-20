@@ -253,12 +253,11 @@ async function deductUserCredit(userId: number): Promise<void> {
 }
 
 /* ================= DB UPDATE ================= */
-async function completeJob(jobId: string, url: string, userId: number) {
+async function completeJob(jobId: string, url: string, userId: number, creditsToDeduct: number) {
     const client = await getClient();
     try {
         await client.query("BEGIN");
 
-        // Update job status
         await client.query(
             `UPDATE render_jobs 
        SET status = 'completed', 
@@ -269,17 +268,16 @@ async function completeJob(jobId: string, url: string, userId: number) {
             [url, jobId]
         );
 
-        // Deduct credit from user
         await client.query(
             `UPDATE users 
-       SET credits = GREATEST(credits - 1, 0),
+       SET credits = GREATEST(credits - $1, 0),
            updated_at = NOW()
-       WHERE id = $1`,
-            [userId]
+       WHERE id = $2`,
+            [creditsToDeduct, userId]  // <-- dynamic now
         );
 
         await client.query("COMMIT");
-        console.log(`✅ Job ${jobId} completed and 1 credit deducted from user ${userId}`);
+        console.log(`✅ Job ${jobId} completed and ${creditsToDeduct} credits deducted from user ${userId}`);
     } catch (err) {
         await client.query("ROLLBACK").catch(() => { });
         throw err;
@@ -325,8 +323,14 @@ async function processJob(job: any, serveUrl: string) {
         // Upload to R2
         const url = await uploadToStorage(outputFile, job.id);
 
-        // Complete job AND deduct credit in a single transaction
-        await completeJob(job.id, url, job.user_id);
+        // Calculate credits: total_video_length_in_minutes * 2, rounded up
+        const { durationInFrames, fps } = job.input_props.videoInfo;
+        const durationInMinutes = durationInFrames / fps / 60;
+        const creditsToDeduct = Math.ceil(durationInMinutes * 2);
+
+        console.log(`💳 Video duration: ${(durationInMinutes * 60).toFixed(1)}s → deducting ${creditsToDeduct} credits`);
+
+        await completeJob(job.id, url, job.user_id, creditsToDeduct);
 
         console.log(`✅ Completed ${job.id}`);
     } catch (err) {
