@@ -253,7 +253,7 @@ async function deductUserCredit(userId: number): Promise<void> {
 }
 
 /* ================= DB UPDATE ================= */
-async function completeJob(jobId: string, url: string, userId: number, creditsToDeduct: number) {
+async function completeJob(jobId: string, url: string, userId: number) {
     const client = await getClient();
     try {
         await client.query("BEGIN");
@@ -268,16 +268,16 @@ async function completeJob(jobId: string, url: string, userId: number, creditsTo
             [url, jobId]
         );
 
-        await client.query(
-            `UPDATE users 
-       SET credits = GREATEST(credits - $1, 0),
-           updated_at = NOW()
-       WHERE id = $2`,
-            [creditsToDeduct, userId]  // <-- dynamic now
-        );
+        //     await client.query(
+        //         `UPDATE users 
+        //    SET credits = GREATEST(credits - $1, 0),
+        //        updated_at = NOW()
+        //    WHERE id = $2`,
+        //         [creditsToDeduct, userId]  // <-- dynamic now
+        //     );
 
         await client.query("COMMIT");
-        console.log(`✅ Job ${jobId} completed and ${creditsToDeduct} credits deducted from user ${userId}`);
+        // console.log(`✅ Job ${jobId} completed and ${creditsToDeduct} credits deducted from user ${userId}`);
     } catch (err) {
         await client.query("ROLLBACK").catch(() => { });
         throw err;
@@ -330,7 +330,7 @@ async function processJob(job: any, serveUrl: string) {
 
         console.log(`💳 Video duration: ${(durationInMinutes * 60).toFixed(1)}s → deducting ${creditsToDeduct} credits`);
 
-        await completeJob(job.id, url, job.user_id, creditsToDeduct);
+        await completeJob(job.id, url, job.user_id);
 
         console.log(`✅ Completed ${job.id}`);
     } catch (err) {
