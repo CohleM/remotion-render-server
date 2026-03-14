@@ -1,189 +1,64 @@
-// src/remotion/Subtitles/ThreeLines.tsx
-import React, { useMemo, useState, useEffect } from 'react';
+// src/remotion/Subtitles/Glow.tsx
+import React, { useMemo } from 'react';
 import {
     AbsoluteFill,
-    interpolate,
-    useCurrentFrame,
     useVideoConfig,
     Sequence,
-    delayRender,
-    continueRender,
-    spring
 } from 'remotion';
 import { memo } from 'react';
 import { SubtitleGroup, Line } from '../../../types/subtitles';
 import { SubtitleStyleConfig, FontStyleDefinition, AnimationType } from '../../../types/style';
+import {
+    getFontStyle,
+    getAnimationType,
+    calculateLinePositions,
+    scaleConfig,
+    ANIMATION_ANTICIPATION_FRAMES,
+} from './shared/subtitleUtils';
+import { useFontsLoaded, WordText } from './shared/SubtitlePrimitives';
 
-// Pre-load common fonts to avoid delayRender issues
-import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
-import { loadFont as loadBebas } from '@remotion/google-fonts/BebasNeue';
-import { loadFont as loadPoppins } from '@remotion/google-fonts/Poppins';
-import { loadFont as loadMontserrat } from '@remotion/google-fonts/Montserrat';
-import { loadFont as loadOswald } from '@remotion/google-fonts/Oswald';
+// ─── Glow-specific font preload ───────────────────────────────────────────────
+// CormorantGaramond is only used in Glow — all other fonts are loaded in
+// SubtitlePrimitives. Import and call it here so it's available when needed.
+
 import { loadFont as loadCormorantGaramond } from '@remotion/google-fonts/CormorantGaramond';
-
-// Initialize fonts
-loadInter();
-loadBebas();
-loadPoppins();
-loadMontserrat();
-loadOswald();
 loadCormorantGaramond();
 
-// ============================================
-// CONFIGURABLE ANIMATION VARIABLES
-// ============================================
 const LINE_SPACING = 0;
-const FADE_OUT_DURATION_FRAMES = 30; // How long the fade out animation takes
-const MAX_WORD_DISPLAY_SECONDS = 3; // Maximum time a word stays on screen
-const ANIMATION_ANTICIPATION_FRAMES = 4;
-// ============================================
 
-// Get font styles from config safely
-const getFontStyle = (config: SubtitleStyleConfig, fontType: string): FontStyleDefinition => {
-    const defaultStyle: FontStyleDefinition = {
-        fontSize: 60,
-        fontWeight: 400,
-        fontFamily: 'Arial',
-        color: '#ffffff'
-    };
+// ─── buildGlowTextShadow ──────────────────────────────────────────────────────
+// Unique to Glow: replaces the standard buildTextShadow from shared utils with
+// a multi-layer glow effect. Uses hex-to-rgb conversion for opacity control.
 
-    return config.fonts[fontType as keyof typeof config.fonts] || defaultStyle;
-};
-
-// Get animation type for a specific font type from config
-const getAnimationType = (config: SubtitleStyleConfig, fontType: string): AnimationType => {
-    const style = config.fonts[fontType as keyof typeof config.fonts];
-    return style?.animationType || 'fade-blur';
-};
-
-// Hook to wait for Google Fonts to load based on config
-const useFontsLoaded = (config: SubtitleStyleConfig) => {
-    const [loaded, setLoaded] = useState(false);
-    const [handle] = useState(() => delayRender('Loading Google Fonts'));
-
-    useEffect(() => {
-        const loadAllFonts = async () => {
-            const fontStyles = Object.values(config.fonts);
-
-            try {
-                await Promise.all(
-                    fontStyles.map(style =>
-                        document.fonts.load(
-                            `${style.fontStyle || 'normal'} ${style.fontWeight} ${style.fontSize}px "${style.fontFamily}"`
-                        )
-                    )
-                );
-                setLoaded(true);
-                continueRender(handle);
-            } catch (err) {
-                console.warn('Font loading failed:', err);
-                setLoaded(true);
-                continueRender(handle);
-            }
-        };
-
-        loadAllFonts();
-    }, [config, handle]);
-
-    return loaded;
-};
-
-// Measure actual rendered height of text content
-const measureActualTextHeight = (
-    text: string,
-    style: FontStyleDefinition,
-    containerWidth: number
-): number => {
-    const tempDiv = document.createElement('div');
-    tempDiv.style.position = 'absolute';
-    tempDiv.style.visibility = 'hidden';
-    tempDiv.style.fontSize = `${style.fontSize}px`;
-    tempDiv.style.fontFamily = `"${style.fontFamily}", sans-serif`;
-    tempDiv.style.fontWeight = String(style.fontWeight);
-    tempDiv.style.fontStyle = style.fontStyle || 'normal';
-    tempDiv.style.lineHeight = '1.0';
-    tempDiv.style.width = `${containerWidth}px`;
-    tempDiv.style.display = 'flex';
-    tempDiv.style.flexWrap = 'wrap';
-    tempDiv.style.justifyContent = 'center';
-    tempDiv.style.alignItems = 'baseline';
-    tempDiv.style.textTransform = style.uppercase ? 'uppercase' : 'none';
-
-    const words = text.split(' ');
-    words.forEach((word) => {
-        const span = document.createElement('span');
-        span.style.display = 'inline-block';
-        span.style.marginRight = '0.3em';
-        span.textContent = word;
-        tempDiv.appendChild(span);
-    });
-
-    document.body.appendChild(tempDiv);
-    const height = tempDiv.offsetHeight;
-    document.body.removeChild(tempDiv);
-
-    return height;
-};
-
-const calculateLinePositions = (
-    lines: Line[],
-    config: SubtitleStyleConfig,
-    containerWidth: number
-): number[] => {
-    if (lines.length === 0) return [];
-
-    const lineHeights = lines.map((line) => {
-        const style = getFontStyle(config, line.font_type);
-        const text = line.words.map(w => w.word).join(' ');
-        return measureActualTextHeight(text, style, containerWidth);
-    });
-
-    const offsets: number[] = [0];
-
-    for (let i = 1; i < lines.length; i++) {
-        const previousHeight = lineHeights[i - 1];
-        const previousOffset = offsets[i - 1];
-        offsets.push(previousOffset + previousHeight + LINE_SPACING);
-    }
-    return offsets;
-};
-
-// Helper function to convert hex to rgb
 const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? {
         r: parseInt(result[1], 16),
         g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
+        b: parseInt(result[3], 16),
     } : null;
 };
 
-// Build text shadow based on shadow settings
-const buildTextShadow = (style: FontStyleDefinition): string => {
+const buildGlowTextShadow = (style: FontStyleDefinition): string => {
     const shadows: string[] = [];
 
-    // 1. Default subtle drop shadow for readability (optional, keep small)
+    // Subtle drop shadow for readability
     shadows.push('2px 2px 4px rgba(0,0,0,0.4)');
 
-    // 2. The GLOW effect - multiple layers for soft falloff
+    // Multi-layer glow effect
     if (style.shadow && style.shadow !== 'none') {
         const baseColor = style.shadowColor || style.color || '#ffffff';
-
-        // Parse color to rgba for opacity control
         const rgb = hexToRgb(baseColor) || { r: 255, g: 255, b: 255 };
 
         const glowLayers = [
-            { blur: 10, opacity: 0.8 },   // Inner tight glow
-            { blur: 0, opacity: 0.5 },    // Mid spread
-            { blur: 100, opacity: 1 },    // Atmospheric falloff
+            { blur: 10, opacity: 0.8 },  // Inner tight glow
+            { blur: 0, opacity: 0.5 },  // Mid spread
+            { blur: 100, opacity: 1.0 },  // Atmospheric falloff
         ];
 
-        // Adjust intensity based on shadow size setting
         const intensityMultiplier =
             style.shadow === 'small' ? 0.6 :
-                style.shadow === 'medium' ? 1 :
-                    1.4; // large
+                style.shadow === 'medium' ? 1.0 : 1.4;
 
         glowLayers.forEach(({ blur, opacity }) => {
             const finalOpacity = Math.min(opacity * intensityMultiplier, 1);
@@ -191,7 +66,7 @@ const buildTextShadow = (style: FontStyleDefinition): string => {
         });
     }
 
-    // 3. Stroke/outline effect
+    // Stroke/outline effect
     if (style.strokeWeight && style.strokeWeight !== 'none') {
         const width = style.strokeWeight === 'small' ? 1 : style.strokeWeight === 'medium' ? 2 : 3;
         const color = style.strokeColor || '#000000';
@@ -207,171 +82,15 @@ const buildTextShadow = (style: FontStyleDefinition): string => {
     return shadows.join(', ');
 };
 
-// Hook to calculate animation values based on type
-const useWordAnimation = (
-    animationType: AnimationType,
-    frame: number,
-    fps: number,
-    wordStartFrame: number
-) => {
-    const animationFrame = Math.max(0, frame - wordStartFrame);
+// ─── LineText ─────────────────────────────────────────────────────────────────
+// Unique to Glow: uses buildGlowTextShadow instead of the shared buildTextShadow.
 
-    const springValue = useMemo(() => spring({
-        frame: animationFrame,
-        fps,
-        config: { damping: 100, stiffness: 100 },
-    }), [animationFrame, fps]);
-
-    return useMemo(() => {
-        switch (animationType) {
-            case 'slide-up':
-                return {
-                    transform: `translateY(${interpolate(springValue, [0, 1], [50, 0])}px)`,
-                    opacity: interpolate(springValue, [0, 1], [0, 1]),
-                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
-                };
-
-            case 'slide-down':
-                return {
-                    transform: `translateY(${interpolate(springValue, [0, 1], [-50, 0])}px)`,
-                    opacity: interpolate(springValue, [0, 1], [0, 1]),
-                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
-                };
-
-            case 'slide-left':
-                return {
-                    transform: `translateX(${interpolate(springValue, [0, 1], [100, 0])}px)`,
-                    opacity: interpolate(springValue, [0, 1], [0, 1]),
-                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
-                };
-
-            case 'slide-right':
-                return {
-                    transform: `translateX(${interpolate(springValue, [0, 1], [-100, 0])}px)`,
-                    opacity: interpolate(springValue, [0, 1], [0, 1]),
-                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
-                };
-
-            case 'scale':
-                return {
-                    transform: `scale(${interpolate(springValue, [0, 1], [0.5, 1])})`,
-                    opacity: interpolate(springValue, [0, 1], [0, 1]),
-                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
-                };
-
-            case 'fade-blur':
-                return {
-                    transform: 'none',
-                    opacity: interpolate(springValue, [0, 1], [0, 1]),
-                    filter: `blur(${interpolate(springValue, [0, 1], [10, 0])}px)`,
-                };
-
-            default:
-                return {
-                    transform: `translateY(${interpolate(springValue, [0, 1], [50, 0])}px)`,
-                    opacity: interpolate(springValue, [0, 1], [0, 1]),
-                    filter: `blur(${interpolate(springValue, [0, 1], [4, 0])}px)`,
-                };
-        }
-    }, [animationType, springValue]);
-};
-
-const WordText = memo(function WordText({
-    word,
-    wordIndex,
-    lineStart,
-    wordStart,
-    wordEnd,
-    lineEnd,
-    animationType,
-}: {
-    word: string;
-    wordIndex: number;
-    lineStart: number;
-    wordStart: number;
-    wordEnd: number;
-    lineEnd: number;
-    animationType: AnimationType;
-}) {
-    const frame = useCurrentFrame();
-    const { fps } = useVideoConfig();
-
-    const relativeWordStart = wordStart - lineStart;
-    const wordStartFrame = Math.round(relativeWordStart * fps) - ANIMATION_ANTICIPATION_FRAMES;
-    const realWordStartFrame = Math.round(relativeWordStart * fps);
-
-    // Calculate when this word should start fading out (2 seconds after appearance)
-    const maxDisplayFrames = MAX_WORD_DISPLAY_SECONDS * fps;
-    const fadeOutStartFrame = realWordStartFrame + maxDisplayFrames;
-
-    // Determine fade out end based on either 2-second limit or line end, whichever comes first
-    const relativeWordEnd = wordEnd - lineStart;
-    const wordEndFrame = Math.round(relativeWordEnd * fps);
-    const fadeOutEndFrame = Math.min(fadeOutStartFrame + FADE_OUT_DURATION_FRAMES, wordEndFrame);
-
-    // Get entry animation values
-    const entryAnimation = useWordAnimation(animationType, frame, fps, wordStartFrame);
-
-    const { opacity, transform, filter } = useMemo(() => {
-        // Entry animation values
-        const entryOpacity = entryAnimation.opacity;
-        const entryTransform = entryAnimation.transform;
-        const entryFilter = entryAnimation.filter;
-
-        // Check if we should start fading out (2 seconds after appearance)
-        if (frame < fadeOutStartFrame) {
-            return {
-                opacity: entryOpacity,
-                transform: entryTransform,
-                filter: entryFilter
-            };
-        }
-
-        // If we're past the word's end time, it's fully invisible
-        if (frame >= fadeOutEndFrame) {
-            return {
-                opacity: 0,
-                transform: entryTransform,
-                filter: 'blur(10px)'
-            };
-        }
-
-        // Calculate fade out progress
-        const fadeOutProgress = (frame - fadeOutStartFrame) / (fadeOutEndFrame - fadeOutStartFrame);
-        const fadeOutOpacity = interpolate(fadeOutProgress, [0, 1], [entryOpacity, 0]);
-        const fadeOutBlur = interpolate(fadeOutProgress, [0, 1], [0, 10]);
-
-        // Combine entry transform with fade out
-        return {
-            opacity: fadeOutOpacity,
-            transform: entryTransform,
-            filter: `blur(${fadeOutBlur}px)`
-        };
-    }, [entryAnimation, frame, fadeOutStartFrame, fadeOutEndFrame]);
-
-    return (
-        <span style={{
-            display: 'inline-block',
-            transform,
-            opacity,
-            filter,
-            marginRight: '0.3em',
-            whiteSpace: 'pre',
-            willChange: 'transform, opacity, filter',
-        }}>
-            {word}
-        </span>
-    );
-});
-
-// Wrap LineText in memo
 const LineText = memo(function LineText({
     line,
     lineIndex,
     translateYOffset,
     style,
     captionPadding,
-    lineEnd,
     animationType,
 }: {
     line: Line;
@@ -379,11 +98,9 @@ const LineText = memo(function LineText({
     translateYOffset: number;
     style: FontStyleDefinition;
     captionPadding: number;
-    lineEnd: number;
     animationType: AnimationType;
 }) {
-    // ✅ Memoize expensive style calculations
-    const textShadow = useMemo(() => buildTextShadow(style), [style]);
+    const textShadow = useMemo(() => buildGlowTextShadow(style), [style]);
 
     const textStroke = useMemo(() => {
         if (!style.strokeWeight || style.strokeWeight === 'none') return undefined;
@@ -405,7 +122,7 @@ const LineText = memo(function LineText({
         fontStyle: style.fontStyle || 'normal',
         color: style.color || '#ffffff',
         textAlign: 'center' as const,
-        textShadow: textShadow,
+        textShadow,
         lineHeight: 1.0,
         display: 'flex',
         flexWrap: 'wrap' as const,
@@ -420,13 +137,12 @@ const LineText = memo(function LineText({
             <div style={textStyle}>
                 {line.words.map((word, wordIndex) => (
                     <WordText
-                        key={`${word.id}-${wordIndex}`} // Stable key using word.id
+                        key={`${word.id}-${wordIndex}`}
                         word={word.word}
                         wordIndex={wordIndex}
                         lineStart={line.start}
                         wordStart={word.start}
                         wordEnd={word.end}
-                        lineEnd={lineEnd}
                         animationType={animationType}
                     />
                 ))}
@@ -434,6 +150,8 @@ const LineText = memo(function LineText({
         </AbsoluteFill>
     );
 });
+
+// ─── Glow ─────────────────────────────────────────────────────────────────────
 
 type ThreeLinesProps = {
     group: SubtitleGroup;
@@ -444,38 +162,29 @@ type ThreeLinesProps = {
 export const Glow: React.FC<ThreeLinesProps> = ({
     group,
     config: rawConfig,
-    captionPadding = 540
+    captionPadding = 540,
 }) => {
     const { fps, width, height } = useVideoConfig();
 
-    const config = useMemo(() => {
-        const scale = height / 1920;
-        return {
-            ...rawConfig,
-            fonts: Object.fromEntries(
-                Object.entries(rawConfig.fonts).map(([key, style]) => [
-                    key,
-                    { ...style, fontSize: Math.round(style.fontSize * scale) }
-                ])
-            ) as SubtitleStyleConfig['fonts']  // 👈 cast back to the original type
-        };
-    }, [rawConfig, height]);
-
+    const config = useMemo(() => scaleConfig(rawConfig, height), [rawConfig, height]);
     const fontsLoaded = useFontsLoaded(config);
 
     if (!group?.lines?.length) {
-        console.error('Invalid group data:', group);
+        console.error('Glow: invalid group data', group);
         return null;
     }
 
     const containerWidth = width * 0.9;
 
-    const lineOffsets = useMemo(() => {
-        if (!fontsLoaded) return [];
-        return calculateLinePositions(group.lines, config, containerWidth);
-    }, [group.lines, config, fontsLoaded, containerWidth]);
+    // Glow does not use fontScales — lines render at their native font sizes.
+    const lineOffsets = useMemo(
+        () => fontsLoaded
+            ? calculateLinePositions(group.lines, config, containerWidth, [], LINE_SPACING)
+            : [],
+        [group.lines, config, fontsLoaded, containerWidth]
+    );
 
-    if (!fontsLoaded || lineOffsets.length === 0) {
+    if (!fontsLoaded || !lineOffsets.length) {
         return null;
     }
 
@@ -483,29 +192,20 @@ export const Glow: React.FC<ThreeLinesProps> = ({
         <AbsoluteFill>
             {group.lines.map((line, lineIndex) => {
                 const relativeStart = line.start - group.start;
-                const from = Math.max(0, Math.round(relativeStart * fps) - ANIMATION_ANTICIPATION_FRAMES);
-                const fontStyle = getFontStyle(config, line.font_type);
-
-                // Get animation type based on the line's font_type
-                const animationType = getAnimationType(config, line.font_type);
-
-                // Calculate line end time for word fade out limits
-                const nextLine = group.lines[lineIndex + 1];
-                const lineEndTime = nextLine ? nextLine.start : (group.start + (line.words[line.words.length - 1]?.end || line.end));
+                const from = Math.max(
+                    0,
+                    Math.round(relativeStart * fps) - ANIMATION_ANTICIPATION_FRAMES
+                );
 
                 return (
-                    <Sequence
-                        key={`line-${lineIndex}`}
-                        from={from}
-                    >
+                    <Sequence key={`line-${lineIndex}`} from={from}>
                         <LineText
                             line={line}
                             lineIndex={lineIndex}
                             translateYOffset={lineOffsets[lineIndex]}
-                            style={fontStyle}
+                            style={getFontStyle(config, line.font_type)}
                             captionPadding={captionPadding}
-                            lineEnd={lineEndTime}
-                            animationType={animationType}
+                            animationType={getAnimationType(config, line.font_type)}
                         />
                     </Sequence>
                 );
