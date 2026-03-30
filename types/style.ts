@@ -13,7 +13,8 @@ export type AnimationType =
     | 'slide-left'
     | 'slide-right'
     | 'scale'
-    | 'fade-blur';
+    | 'fade-blur'
+    | 'basic';
 export interface FontStyleDefinition {
     fontSize: number;
     fontWeight: number;
